@@ -8,6 +8,8 @@ load_dotenv()  # <-- load env BEFORE importing config
 
 from config import DevConfig, ProdConfig
 from extensions import db, migrate, jwt
+from extensions import init_extensions
+
 
 # Import models so Alembic sees them
 import models
@@ -16,15 +18,23 @@ import models
 from routes.auth import router as auth_router
 from routes.onboarding import router as onboarding_router
 from routes.availability import router as availability_router
-
 def create_app():
     app = Flask(__name__)
     app.config.from_object(ProdConfig if os.getenv("FLASK_ENV") == "production" else DevConfig)
 
+    app.config.update(
+        MAIL_SERVER=os.getenv("MAIL_SERVER", "smtp.gmail.com"),
+        MAIL_PORT=int(os.getenv("MAIL_PORT", "587")),
+        MAIL_USE_TLS=os.getenv("MAIL_USE_TLS", "true").lower() == "true",
+        MAIL_USERNAME=os.getenv("MAIL_USERNAME"),
+        MAIL_PASSWORD=os.getenv("MAIL_PASSWORD"),
+        MAIL_DEFAULT_SENDER=os.getenv("MAIL_DEFAULT_SENDER"),
+        EMAIL_SENDING_ENABLED=os.getenv("EMAIL_SENDING_ENABLED", "false").lower() == "true",
+    )
+
+    init_extensions(app)
+    
     # Extensions
-    db.init_app(app)
-    migrate.init_app(app, db)
-    jwt.init_app(app)
     CORS(app, resources={r"/*": {"origins": "*"}})
 
     # Blueprints

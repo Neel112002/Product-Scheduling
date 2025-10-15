@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from extensions import db
 from models import AppUser
 from utils.security import hash_password, verify_password
+from sqlalchemy import func
 
 
 class AuthService:
@@ -78,6 +79,8 @@ class AuthService:
     def change_password(self, *, user_id: int, current_password: str, new_password: str, confirm_password: str) -> None:
         if new_password != confirm_password:
             raise ValueError("Passwords do not match")
+        if len(new_password) < 8:
+            raise ValueError("Password must be at least 8 characters")
 
         user = AppUser.query.get(user_id)
         if not user:
@@ -85,18 +88,26 @@ class AuthService:
 
         if not verify_password(current_password, user.user_password):
             raise ValueError("Current password is incorrect")
+        if verify_password(new_password, user.user_password):
+            raise ValueError("New password must be different from current password")
 
         user.user_password = hash_password(new_password)
         db.session.commit()
 
     def set_password(self, *, user_id: int, new_password: str, confirm_password: str) -> None:
-        """Directly set a new password (used by forgot-password confirm)."""
+        """Used by forgot-password confirm."""
         if new_password != confirm_password:
             raise ValueError("Passwords do not match")
+        if len(new_password) < 8:
+            raise ValueError("Password must be at least 8 characters")
 
         user = AppUser.query.get(user_id)
         if not user:
             raise ValueError("User not found")
+
+        # Optional: prevent setting same as current
+        if verify_password(new_password, user.user_password):
+            raise ValueError("New password must be different from current password")
 
         user.user_password = hash_password(new_password)
         db.session.commit()

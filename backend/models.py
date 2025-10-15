@@ -128,4 +128,14 @@ class OnboardingInvite(db.Model):
     company = db.relationship("Company")
     location = db.relationship("Location")
 
-    
+class PasswordResetToken(db.Model):
+    __tablename__ = "password_reset_token"
+    id = db.Column(db.BigInteger, primary_key=True)
+    user_id = db.Column(db.BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship("AppUser", backref=db.backref("password_reset_tokens", lazy="dynamic"))
