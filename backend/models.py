@@ -2,6 +2,7 @@ from datetime import datetime, date
 from sqlalchemy.dialects.postgresql import CITEXT
 from sqlalchemy import Date, DateTime, Time, Text, Boolean, BigInteger, UniqueConstraint
 from extensions import db
+import hashlib
 
 
 # 1) Company
@@ -126,3 +127,5 @@ class OnboardingInvite(db.Model):
 
     company = db.relationship("Company")
     location = db.relationship("Location")
+
+    
