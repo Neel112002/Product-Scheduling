@@ -69,11 +69,34 @@ class AuthService:
             "is_verified": user.is_verified,
         }
 
-    def set_password(self, user: AppUser, new_password: str) -> None:
-        """
-        Update a user's password (e.g., during onboarding acceptance or reset).
-        Commits the change.
-        """
+
+#--- Changepassword/ForgetPassowrd ---#
+    def find_user_by_email_ci(self, email: str) -> Optional[AppUser]:
+        """Case-insensitive lookup by email."""
+        return AppUser.query.filter(func.lower(AppUser.user_email) == email.lower()).first()
+
+    def change_password(self, *, user_id: int, current_password: str, new_password: str, confirm_password: str) -> None:
+        if new_password != confirm_password:
+            raise ValueError("Passwords do not match")
+
+        user = AppUser.query.get(user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        if not verify_password(current_password, user.user_password):
+            raise ValueError("Current password is incorrect")
+
         user.user_password = hash_password(new_password)
-        db.session.add(user)
+        db.session.commit()
+
+    def set_password(self, *, user_id: int, new_password: str, confirm_password: str) -> None:
+        """Directly set a new password (used by forgot-password confirm)."""
+        if new_password != confirm_password:
+            raise ValueError("Passwords do not match")
+
+        user = AppUser.query.get(user_id)
+        if not user:
+            raise ValueError("User not found")
+
+        user.user_password = hash_password(new_password)
         db.session.commit()
