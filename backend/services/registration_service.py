@@ -29,9 +29,9 @@ class RegistrationService:
         Expected payload structure (Account -> Company -> Location):
 
         {
-          "owner":   {"username": "...", "email": "...", "password": "...", "confirm_password": "..."},
-          "company": {"name": "...", "email": "...", "address": "...", "city": "...", "country": "...", "postal_code": "..."},
-          "location":{"name": "...", "address": "...", "postal_code": "..."}
+        "owner":   {"username": "...", "email": "...", "password": "...", "confirm_password": "..."},
+        "company": {"name": "...", "email": "...", "address": "...", "city": "...", "country": "...", "postal_code": "..."},
+        "location":{"name": "...", "address": "...", "postal_code": "..."}
         }
         """
         owner = (payload or {}).get("owner") or {}

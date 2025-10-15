@@ -15,6 +15,7 @@ import models
 # Blueprints
 from routes.auth import router as auth_router
 from routes.onboarding import router as onboarding_router
+from routes.availability import router as availability_router
 
 def create_app():
     app = Flask(__name__)
@@ -29,6 +30,7 @@ def create_app():
     # Blueprints
     app.register_blueprint(auth_router)
     app.register_blueprint(onboarding_router)
+    app.register_blueprint(availability_router)
 
     @app.get("/")
     def root():
@@ -39,4 +41,4 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
