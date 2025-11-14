@@ -7,7 +7,9 @@ export const api = axios.create({ baseURL: API_BASE_URL, timeout: 10000 });
 
 api.interceptors.request.use(async (config) => {
     const token = await getAccessToken();
-    if (token) config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
 });
 
@@ -21,5 +23,18 @@ export const AuthAPI = {
     resetPassword: (token: string, new_password: string, confirm_password: string) =>
         api.post('/auth/forgot-password/confirm', { token, new_password, confirm_password }),
     registerOwner: (body: any) =>
-    api.post('/auth/register', body),
+        api.post('/auth/register', body),
+};
+
+// 🔹 Admin-specific endpoints
+export const AdminAPI = {
+    // send onboarding email + create staff account
+    sendOnboardingInvite: (body: {
+        email: string;
+        location_id: number;
+        position?: string;
+    }) => api.post('/onboarding/invite', body),
+
+    // optional helper to populate the location dropdown
+    listLocations: () => api.get('/admin/locations'),
 };

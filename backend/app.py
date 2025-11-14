@@ -18,6 +18,8 @@ import models
 from routes.auth import router as auth_router
 from routes.onboarding import router as onboarding_router
 from routes.availability import router as availability_router
+from routes.admin import admin_bp
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(ProdConfig if os.getenv("FLASK_ENV") == "production" else DevConfig)
@@ -41,6 +43,8 @@ def create_app():
     app.register_blueprint(auth_router)
     app.register_blueprint(onboarding_router)
     app.register_blueprint(availability_router)
+    app.register_blueprint(admin_bp)
+    
     @app.get("/ping")
     def ping():
         return {"ok": True}

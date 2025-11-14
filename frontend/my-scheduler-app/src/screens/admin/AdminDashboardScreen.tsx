@@ -10,7 +10,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
         <SafeAreaView style={styles.safe}>
             <ScrollView
                 style={styles.container}
-                contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+                contentContainerStyle={{ padding: 16, paddingBottom: 80 }}
             >
                 {/* Header */}
                 <View style={styles.headerRow}>
@@ -28,25 +28,25 @@ export default function AdminDashboardScreen({ navigation }: any) {
                         icon="people-outline"
                         label="Team & roles"
                         description="Manage staff, permissions and invites."
-                        onPress={() => { }}
+                        onPress={() => {}}
                     />
                     <AdminTile
                         icon="business-outline"
                         label="Locations"
                         description="Configure stores and opening hours."
-                        onPress={() => { }}
+                        onPress={() => {}}
                     />
                     <AdminTile
                         icon="calendar-outline"
                         label="Scheduling"
                         description="Create and publish weekly shifts."
-                        onPress={() => { }}
+                        onPress={() => {}}
                     />
                     <AdminTile
                         icon="stats-chart-outline"
                         label="Analytics"
                         description="Track hours, labor % and overtime."
-                        onPress={() => { }}
+                        onPress={() => {}}
                     />
                 </View>
 
@@ -55,11 +55,26 @@ export default function AdminDashboardScreen({ navigation }: any) {
                     <Text style={styles.cardTitle}>Coming next</Text>
                     <Text style={styles.cardBody}>
                         This is a placeholder admin dashboard. You can later plug in:
-                        {'\n'}• Shift templates & auto-scheduling{'\n'}• Staff onboarding
-                        forms{'\n'}• Labor cost & utilization charts{'\n'}• Notifications
-                        and approvals
+                        {'\n'}• Shift templates & auto-scheduling
+                        {'\n'}• Staff onboarding forms
+                        {'\n'}• Labor cost & utilization charts
+                        {'\n'}• Notifications and approvals
                     </Text>
                 </View>
+
+                {/* Invite Staff Button */}
+                <Pressable
+                    style={styles.inviteButton}
+                    onPress={() => navigation.navigate('InviteStaff')}
+                >
+                    <Ionicons
+                        name="person-add-outline"
+                        size={18}
+                        color={colors.buttonText}
+                        style={{ marginRight: 8 }}
+                    />
+                    <Text style={styles.inviteButtonText}>Invite Staff Member</Text>
+                </Pressable>
             </ScrollView>
         </SafeAreaView>
     );
@@ -163,5 +178,21 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: colors.gray,
         lineHeight: 18,
+    },
+
+    /* 🔥 NEW BUTTON STYLE */
+    inviteButton: {
+        marginTop: 20,
+        backgroundColor: colors.primary,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 14,
+        borderRadius: 999,
+    },
+    inviteButtonText: {
+        color: colors.buttonText,
+        fontWeight: '700',
+        fontSize: 15,
     },
 });
