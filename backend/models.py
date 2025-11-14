@@ -1,8 +1,8 @@
 from datetime import datetime, date
-from sqlalchemy.dialects.postgresql import CITEXT
 from sqlalchemy import Date, DateTime, Time, Text, Boolean, BigInteger, UniqueConstraint
+from sqlalchemy.dialects.postgresql import CITEXT, UUID
 from extensions import db
-import hashlib
+import uuid
 
 
 # 1) Company
@@ -93,7 +93,8 @@ class Employment(db.Model):
     user_id = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), nullable=False)
     comp_id = db.Column(BigInteger, db.ForeignKey("company.comp_id", ondelete="CASCADE"), nullable=False)
     location_id = db.Column(BigInteger, db.ForeignKey("location.loc_id", ondelete="SET NULL"))
-    position = db.Column(Text, nullable=False)
+    # 🔥 default role = employee; owner override is set in RegistrationService
+    position = db.Column(Text, nullable=False, default="employee")
     status = db.Column(Text, nullable=False, default="active")
     start_date = db.Column(Date, nullable=False, default=date.today)
     end_date = db.Column(Date)
@@ -128,4 +129,63 @@ class OnboardingInvite(db.Model):
     company = db.relationship("Company")
     location = db.relationship("Location")
 
-    
+
+class PasswordResetToken(db.Model):
+    __tablename__ = "password_reset_token"
+    id = db.Column(db.BigInteger, primary_key=True)
+    user_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("app_user.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship(
+        "AppUser",
+        backref=db.backref("password_reset_tokens", lazy="dynamic"),
+    )
+
+
+class TokenBlacklist(db.Model):
+    __tablename__ = "token_blacklist"
+
+    id = db.Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    jti = db.Column(db.String(64), unique=True, nullable=False, index=True)  # JWT ID
+    user_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("app_user.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_type = db.Column(db.String(16), nullable=False)  # "access" or "refresh"
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=True)  # from JWT "exp"
+    revoked_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<TokenBlacklist jti={self.jti} user_id={self.user_id} type={self.token_type}>"
+
+
+class EmailVerificationToken(db.Model):
+    __tablename__ = "email_verification_token"
+
+    id = db.Column(db.BigInteger, primary_key=True)
+    user_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("app_user.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    user = db.relationship(
+        "AppUser",
+        backref=db.backref("email_verification_tokens", lazy="dynamic"),
+    )

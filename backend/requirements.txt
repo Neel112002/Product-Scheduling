@@ -5,3 +5,4 @@ psycopg2-binary
 python-dotenv
 Flask-JWT-Extended
 Flask-CORS
+Flask-Mail==0.9.1
