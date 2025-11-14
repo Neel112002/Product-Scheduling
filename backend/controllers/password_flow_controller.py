@@ -1,16 +1,17 @@
 # controllers/password_flow_controller.py
-from flask import request, jsonify, url_for, make_response
-from urllib.parse import urljoin
+from flask import request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
+
 from services.auth_service import AuthService
 from services.password_reset_service import create_reset_token, consume_reset_token
-from utils.mailer import send_password_reset_email
+from utils.mailer import send_password_reset_otp_email  # <-- use OTP mailer
+
 
 class PasswordFlowController:
     def __init__(self):
         self.svc = AuthService()
 
-    # 1) Change password (in-app)
+    # 1) Change password (in-app, JWT)
     @jwt_required()
     def change_password(self):
         data = request.get_json(silent=True) or {}
@@ -31,39 +32,38 @@ class PasswordFlowController:
                 user_id=user_id,
                 current_password=current_password,
                 new_password=new_password,
-                confirm_password=confirm_password
+                confirm_password=confirm_password,
             )
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
         return jsonify({"message": "Password updated successfully. Please log in again on other devices."}), 200
 
-    # 2) Forgot password (request link)
+    # 2) Forgot password (request OTP)
+    # POST /auth/forgot-password  { "email": "user@example.com" }
     def forgot_password(self):
         data = request.get_json(silent=True) or {}
-        email = (data.get("email") or "").strip()
-        generic = "If that email exists, a reset link has been sent."
+        email = (data.get("email") or "").strip().lower()
+        generic = "If that email exists, a reset code has been sent."
 
         if not email:
             return jsonify({"message": generic}), 200
 
-        user = self.svc.find_user_by_email_ci(email)
-        if not user:
-            return jsonify({"message": generic}), 200
+        # Be privacy-safe: don't reveal if the email exists
+        user = getattr(self.svc, "find_user_by_email_ci", None)
+        user = user(email) if callable(user) else self.svc.find_user_by_email(email)
 
-        raw_token = create_reset_token(user_id=user.user_id, ttl_minutes=30)
+        if user:
+            otp_code = create_reset_token(user_id=user.user_id, ttl_minutes=30)  # returns 6-digit OTP
+            send_password_reset_otp_email(to_email=user.user_email, otp_code=otp_code)
 
-        # Link opens a small HTML page (GET) that posts back to the same endpoint (POST)
-        confirm_path = url_for("auth.forgot_password_confirm", _external=False) + f"?token={raw_token}"
-        reset_link = urljoin(request.host_url, confirm_path.lstrip("/"))
-
-        send_password_reset_email(user.user_email, reset_link)
         return jsonify({"message": generic}), 200
 
-    # 2a) (NEW) Forgot password confirm PAGE (GET) – renders a tiny form
+    # 2a) Optional: simple HTML page for manual reset with OTP (GET)
+    # GET /auth/forgot-password/confirm
+    # Useful if a user opens a web page and types the code received by email.
     def forgot_password_confirm_page(self):
-        token = (request.args.get("token") or "").strip()
-        html = f"""
+        html = """
         <!doctype html>
         <html>
           <head>
@@ -73,8 +73,11 @@ class PasswordFlowController:
           </head>
           <body style="font-family: system-ui, -apple-system, Segoe UI, Roboto; max-width: 520px; margin: 48px auto; padding: 0 16px;">
             <h2>Reset your password</h2>
-            <form method="post" action="{url_for('auth.forgot_password_confirm')}">
-              <input type="hidden" name="token" value="{token}">
+            <form method="post">
+              <div style="margin:12px 0;">
+                <label>6-digit code</label><br>
+                <input type="text" name="token" minlength="6" maxlength="6" required style="width:100%;padding:8px;">
+              </div>
               <div style="margin:12px 0;">
                 <label>New password</label><br>
                 <input type="password" name="new_password" minlength="8" required style="width:100%;padding:8px;">
@@ -90,14 +93,13 @@ class PasswordFlowController:
         """
         return make_response(html, 200)
 
-    # 3) Forgot password (confirm via token) – accepts JSON OR form
+    # 3) Forgot password confirm (OTP) – accepts JSON OR form
+    # POST /auth/forgot-password/confirm
+    # Body JSON or form: { "token": "123456", "new_password": "...", "confirm_password": "..." }
     def forgot_password_confirm(self):
-        # Accept JSON or form submission
-        data = request.get_json(silent=True)
-        if not data:
-            data = request.form.to_dict()
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
 
-        token            = (data.get("token") or request.args.get("token") or "").strip()
+        raw_otp          = (data.get("token") or "").strip()
         new_password     = (data.get("new_password") or "").strip()
         confirm_password = (data.get("confirm_password") or "").strip()
 
@@ -110,38 +112,32 @@ class PasswordFlowController:
             return make_response(html, status)
 
         # Basic validations
-        if not token:
-            # If came from form, render HTML; else JSON
-            if request.form:
-                return html_response("Reset password", "Missing token.", 400)
-            return jsonify({"error": "Missing token."}), 400
+        if not (raw_otp.isdigit() and len(raw_otp) == 6):
+            return (html_response("Reset password", "Invalid code.", 400)
+                    if request.form else jsonify({"error": "Invalid code."}), 400)
         if len(new_password) < 8:
-            if request.form:
-                return html_response("Reset password", "Password must be at least 8 characters.", 400)
-            return jsonify({"error": "Password must be at least 8 characters."}), 400
+            return (html_response("Reset password", "Password must be at least 8 characters.", 400)
+                    if request.form else jsonify({"error": "Password must be at least 8 characters."}), 400)
         if new_password != confirm_password:
-            if request.form:
-                return html_response("Reset password", "Passwords do not match.", 400)
-            return jsonify({"error": "Passwords do not match."}), 400
+            return (html_response("Reset password", "Passwords do not match.", 400)
+                    if request.form else jsonify({"error": "Passwords do not match."}), 400)
 
-        user_id = consume_reset_token(token)
+        user_id = consume_reset_token(raw_otp)
         if not user_id:
-            # Don’t leak token validity; provide neutral message
-            if request.form:
-                return html_response("Reset password", "If the token is valid, the password has been updated.")
-            return jsonify({"message": "If the token is valid, the password has been updated."}), 200
+            # Neutral response (don’t leak whether the code was valid)
+            return (html_response("Reset password", "If the code is valid, the password has been updated.")
+                    if request.form else jsonify({"message": "If the code is valid, the password has been updated."}), 200)
 
         try:
+            # Keep your existing method name
             self.svc.set_password(
                 user_id=user_id,
                 new_password=new_password,
-                confirm_password=confirm_password
+                confirm_password=confirm_password,
             )
         except ValueError as e:
-            if request.form:
-                return html_response("Reset password", str(e), 400)
-            return jsonify({"error": str(e)}), 400
+            return (html_response("Reset password", str(e), 400)
+                    if request.form else jsonify({"error": str(e)}), 400)
 
-        if request.form:
-            return html_response("Success", "Your password has been reset. You can close this tab and log in with your new password.")
-        return jsonify({"message": "Password has been reset successfully. Please log in with your new password."}), 200
+        return (html_response("Success", "Your password has been reset. You can close this tab and log in with your new password.")
+                if request.form else jsonify({"message": "Password has been reset successfully. Please log in with your new password."}), 200)

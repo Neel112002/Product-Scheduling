@@ -41,11 +41,12 @@ def create_app():
     app.register_blueprint(auth_router)
     app.register_blueprint(onboarding_router)
     app.register_blueprint(availability_router)
-
+    @app.get("/ping")
+    def ping():
+        return {"ok": True}
     @app.get("/")
     def root():
         return jsonify({"message": "Work Scheduler Flask API is running 🚀"})
-
     return app
 
 app = create_app()
