@@ -10,6 +10,9 @@ import { AuthContext } from '../context/AuthContext';
 import AuthStack from './AuthStack';
 import AppStack from './AppStack';
 
+import { ApolloProvider } from '@apollo/client/react';
+import { apolloClient } from '../graphql/client';
+
 type RootParamList = { Auth: undefined; App: undefined };
 const Root = createNativeStackNavigator<RootParamList>();
 
@@ -50,21 +53,23 @@ export default function RootNavigator() {
     );
 
     return (
-        <NavigationContainer linking={linking}>
-            <Root.Navigator
-                key={isAuthenticated ? `app-${initialAppRoute}` : 'auth'}
-                screenOptions={{ headerShown: false }}
-            >
-                {isAuthenticated && role ? (
-                    <Root.Screen
-                        name="App"
-                        // pass initialRoute into AppStack
-                        children={() => <AppStack initialRoute={initialAppRoute} />}
-                    />
-                ) : (
-                    <Root.Screen name="Auth" component={AuthStack} />
-                )}
-            </Root.Navigator>
-        </NavigationContainer>
+        <ApolloProvider client={apolloClient}>
+            <NavigationContainer linking={linking}>
+                <Root.Navigator
+                    key={isAuthenticated ? `app-${initialAppRoute}` : 'auth'}
+                    screenOptions={{ headerShown: false }}
+                >
+                    {isAuthenticated && role ? (
+                        <Root.Screen
+                            name="App"
+                            // pass initialRoute into AppStack
+                            children={() => <AppStack initialRoute={initialAppRoute} />}
+                        />
+                    ) : (
+                        <Root.Screen name="Auth" component={AuthStack} />
+                    )}
+                </Root.Navigator>
+            </NavigationContainer>
+        </ApolloProvider>
     );
 }

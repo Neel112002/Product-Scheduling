@@ -14,12 +14,35 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useMutation } from '@apollo/client/react';
 import { colors } from '../../theme/colors';
-import { AdminAPI } from '../../api/api';
+import {
+    MY_LOCATIONS_QUERY,
+    SEND_ONBOARDING_INVITE_MUTATION,
+} from '../../graphql/operations';
 
+// Types that match your schema
 type Location = {
     id: number;
     name: string;
+    address?: string | null;
+};
+
+type MyLocationsQueryData = {
+    myLocations: Location[];
+};
+
+type SendInviteData = {
+    sendOnboardingInvite: {
+        inviteId: number;
+        email: string;
+    };
+};
+
+type SendInviteVars = {
+    email: string;
+    locationId: number;
+    position?: string | null;
 };
 
 export default function InviteStaffScreen({ navigation }: any) {
@@ -28,42 +51,33 @@ export default function InviteStaffScreen({ navigation }: any) {
 
     const [locations, setLocations] = useState<Location[]>([]);
     const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-    const [locLoading, setLocLoading] = useState(false);
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
     const [locModalOpen, setLocModalOpen] = useState(false);
 
-    // ── Load locations from backend (or mock for now) ───────────────────────────
+    // ── Load locations via GraphQL ────────────────────────────────
+    const {
+        data: locData,
+        loading: locLoading,
+        error: locError,
+        refetch: refetchLocations,
+    } = useQuery<MyLocationsQueryData>(MY_LOCATIONS_QUERY, {
+        fetchPolicy: 'cache-and-network',
+    });
+
     useEffect(() => {
-        const load = async () => {
-            try {
-                setLocLoading(true);
-                setError(null);
+        const list = locData?.myLocations ?? [];
+        setLocations(list);
+        if (list.length && !selectedLocation) {
+            setSelectedLocation(list[0]);
+        }
+    }, [locData, selectedLocation]);
 
-                const { data } = await AdminAPI.listLocations();
-                // backend can return either { locations: [...] } or just [...]
-                const list: Location[] = Array.isArray(data)
-                    ? data
-                    : Array.isArray(data?.locations)
-                        ? data.locations
-                        : [];
-
-                setLocations(list);
-                if (list.length && !selectedLocation) {
-                    setSelectedLocation(list[0]);
-                }
-            } catch (e: any) {
-                console.warn('Failed to load locations', e);
-                setError('Could not load locations. Please try again later.');
-            } finally {
-                setLocLoading(false);
-            }
-        };
-
-        load();
-    }, []);
+    // ── Mutation for sending invite ───────────────────────────────
+    const [sendInvite] = useMutation<SendInviteData, SendInviteVars>(
+        SEND_ONBOARDING_INVITE_MUTATION,
+    );
 
     const handleSendInvite = async () => {
         if (!email.trim()) {
@@ -79,10 +93,12 @@ export default function InviteStaffScreen({ navigation }: any) {
         setError(null);
 
         try {
-            await AdminAPI.sendOnboardingInvite({
-                email: email.trim(),
-                location_id: selectedLocation.id,
-                position: position.trim() || 'Staff',
+            await sendInvite({
+                variables: {
+                    email: email.trim(),
+                    locationId: selectedLocation.id,
+                    position: position.trim() || null,
+                },
             });
 
             Alert.alert(
@@ -100,10 +116,10 @@ export default function InviteStaffScreen({ navigation }: any) {
             setEmail('');
             setPosition('Staff');
         } catch (e: any) {
-            console.error(e);
+            console.error('[InviteStaffScreen] sendInvite error:', e);
             const msg =
-                e?.response?.data?.error ||
-                e?.response?.data?.message ||
+                e?.message ||
+                e?.graphQLErrors?.[0]?.message ||
                 'Could not send invite. Please try again.';
             setError(msg);
             Alert.alert('Error', msg);
@@ -111,6 +127,8 @@ export default function InviteStaffScreen({ navigation }: any) {
             setSubmitting(false);
         }
     };
+
+    const loadingState = locLoading && !locations.length;
 
     return (
         <SafeAreaView style={styles.safe}>
@@ -153,7 +171,8 @@ export default function InviteStaffScreen({ navigation }: any) {
 
                 <View style={styles.card}>
                     <Text style={styles.cardTitle}>Location</Text>
-                    {locLoading ? (
+
+                    {loadingState ? (
                         <View style={{ paddingVertical: 12, alignItems: 'center' }}>
                             <ActivityIndicator />
                             <Text style={styles.helperText}>Loading locations…</Text>
@@ -187,6 +206,12 @@ export default function InviteStaffScreen({ navigation }: any) {
                                 />
                             </Pressable>
                         </>
+                    )}
+
+                    {locError && (
+                        <Text style={[styles.helperText, { color: '#f97373' }]}>
+                            Could not load locations. Pull to refresh and try again.
+                        </Text>
                     )}
 
                     {error && (

@@ -1,11 +1,22 @@
 // src/screens/admin/AdminDashboardScreen.tsx
-import React from 'react';
+import React, { useContext } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../theme/colors';
+import { AuthContext } from '../../context/AuthContext';
 
 export default function AdminDashboardScreen({ navigation }: any) {
+    const { logout } = useContext(AuthContext);
+
+    const handleLogout = async () => {
+        try {
+            await logout();
+        } catch (e) {
+            console.warn('Logout failed', e);
+        }
+    };
+
     return (
         <SafeAreaView style={styles.safe}>
             <ScrollView
@@ -14,12 +25,29 @@ export default function AdminDashboardScreen({ navigation }: any) {
             >
                 {/* Header */}
                 <View style={styles.headerRow}>
-                    <View>
+                    <View style={{ flex: 1 }}>
                         <Text style={styles.title}>Admin dashboard</Text>
                         <Text style={styles.subtitle}>
                             Manage locations, staff and schedules.
                         </Text>
                     </View>
+
+                    {/* 🔐 Logout button */}
+                    <Pressable
+                        onPress={handleLogout}
+                        style={({ pressed }) => [
+                            styles.logoutBtn,
+                            pressed && { opacity: 0.8 },
+                        ]}
+                    >
+                        <Ionicons
+                            name="log-out-outline"
+                            size={18}
+                            color={colors.primary}
+                            style={{ marginRight: 4 }}
+                        />
+                        <Text style={styles.logoutText}>Logout</Text>
+                    </Pressable>
                 </View>
 
                 {/* Quick admin tiles */}
@@ -113,6 +141,8 @@ const styles = StyleSheet.create({
     container: { flex: 1 },
     headerRow: {
         marginBottom: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     title: {
         fontSize: 22,
@@ -124,6 +154,25 @@ const styles = StyleSheet.create({
         color: colors.gray,
         marginTop: 4,
     },
+
+    // 🔐 Logout styles
+    logoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: colors.inputBorder,
+        backgroundColor: '#FFFFFF',
+        marginLeft: 8,
+    },
+    logoutText: {
+        color: colors.primary,
+        fontSize: 13,
+        fontWeight: '600',
+    },
+
     grid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -180,7 +229,6 @@ const styles = StyleSheet.create({
         lineHeight: 18,
     },
 
-    /* 🔥 NEW BUTTON STYLE */
     inviteButton: {
         marginTop: 20,
         backgroundColor: colors.primary,

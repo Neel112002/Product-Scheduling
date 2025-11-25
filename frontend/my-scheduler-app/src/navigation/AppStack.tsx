@@ -5,12 +5,14 @@ import HomeScreen from '../screens/HomeScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
+import CompleteProfileScreen from '../screens/CompleteProfileScreen';
 
 export type AppStackParamList = {
     Dashboard: undefined;
     AdminDashboard: undefined;
     ProfileSettings: undefined;
-    InviteStaff: undefined;   // ✅ add this
+    InviteStaff: undefined;
+    CompleteProfile: undefined;
 };
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -61,6 +63,12 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                     title: 'Invite staff',
                     headerShown: false,
                 }}
+            />
+
+            <Stack.Screen
+                name="CompleteProfile"
+                component={CompleteProfileScreen}
+                options={{ title: 'Complete your profile' }}
             />
         </Stack.Navigator>
     );

@@ -4,28 +4,30 @@ import React, {
     useMemo,
     useState,
     useContext,
-    useEffect,
 } from 'react';
-import { ScrollView, RefreshControl, View, StyleSheet } from 'react-native';
+import {
+    ScrollView,
+    RefreshControl,
+    View,
+    StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
+import { useQuery } from '@apollo/client/react';
 
+import { colors } from '../theme/colors';
 import HeaderGreeting from '../components/home/HeaderGreeting';
 import NextShiftCard, { Shift } from '../components/home/NextShiftCard';
 import QuickActionsCard from '../components/home/QuickActionsCard';
 import TeamOnDutyCard, { TeamMember } from '../components/home/TeamOnDutyCard';
 import AlertsCard, { AlertItem } from '../components/home/AlertsCard';
-import FloatingActionButton from '../components/home/FloatingActionButton';
 import { AuthContext } from '../context/AuthContext';
-import { api } from '../api/api';
+import {
+    ME_QUERY,
+    MY_LOCATIONS_QUERY,
+    SHIFTS_BY_LOCATION_QUERY,
+} from '../graphql/operations';
 
-// ---- Types for dynamic data ----
-type LocationOption = {
-    id: number;
-    name: string;
-};
-
-// ---- Still mock for now (can wire later) ----
+// ─── Static mocks for now ─────────────────────────────────────
 const mockTeamToday: TeamMember[] = [
     { id: 'u1', name: 'Alex Johnson', status: 'on' },
     { id: 'u2', name: 'Priya Singh', status: 'break' },
@@ -51,131 +53,158 @@ const mockAlerts: AlertItem[] = [
     },
     {
         id: 'a3',
-        icon: 'megaphone-outline',
+        icon: 'notifications-outline',
         title: 'Team meeting today',
         subtitle: '4:00 PM • Back office',
     },
 ];
 
+// ---- Types for dynamic data ----
+export type LocationOption = {
+    id: number;
+    name: string;
+    address?: string | null;
+};
+
+type MeQueryData = {
+    me: {
+        user_id: number;
+        username: string;
+        user_email: string;
+        display_name?: string | null;
+        role?: string | null;
+        company?: { id: number; name: string } | null;
+        primaryLocation?: { id: number; name: string } | null;
+    } | null;
+};
+
+type MyLocationsQueryData = {
+    myLocations: LocationOption[];
+};
+
+type ShiftsByLocationData = {
+    shiftsByLocation: {
+        id: number;
+        role?: string | null;
+        startTime: string;
+        endTime: string;
+        location: {
+            id: number;
+            name: string;
+        };
+    }[];
+};
+
 export default function HomeScreen({ navigation }: any) {
-    const { logout, user } = useContext(AuthContext);
+    const { logout, user: authUser } = useContext(AuthContext);
 
     const [refreshing, setRefreshing] = useState(false);
-
-    const [locations, setLocations] = useState<LocationOption[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
-        null
+        authUser?.primaryLocation?.id ?? null,
     );
-    const [shifts, setShifts] = useState<Shift[]>([]);
-    const [loadingShifts, setLoadingShifts] = useState(false);
 
-    // ---------- Derived UI bits ----------
+    // 1) Get fresh user (me) from GraphQL
+    const { data: meData } = useQuery<MeQueryData>(ME_QUERY, {
+        fetchPolicy: 'cache-first',
+    });
+    const graphUser = meData?.me ?? null;
+
+    // 2) Locations accessible to this user
+    const {
+        data: locData,
+        loading: loadingLocations,
+        refetch: refetchLocations,
+    } = useQuery<MyLocationsQueryData>(MY_LOCATIONS_QUERY, {
+        fetchPolicy: 'cache-and-network',
+    });
+
+    const locations: LocationOption[] = locData?.myLocations ?? [];
+
+    // default location: primaryLocation → first in list
+    const effectivePrimaryLocationId =
+        graphUser?.primaryLocation?.id ?? authUser?.primaryLocation?.id ?? null;
+
+    if (!selectedLocationId && locations.length && effectivePrimaryLocationId) {
+        const fromUser =
+            locations.find((l) => l.id === effectivePrimaryLocationId) ??
+            locations[0];
+        if (fromUser && selectedLocationId == null) {
+            // simple guard against re-render loops
+            setSelectedLocationId(fromUser.id);
+        }
+    }
+
+    // 3) Shifts for selected location (if any)
+    const {
+        data: shiftData,
+        loading: loadingShifts,
+        refetch: refetchShifts,
+    } = useQuery<ShiftsByLocationData>(SHIFTS_BY_LOCATION_QUERY, {
+        skip: !selectedLocationId,
+        variables: { locationId: selectedLocationId ?? 0 },
+        fetchPolicy: 'cache-and-network',
+    });
+
+    const shifts: Shift[] = useMemo(() => {
+        const raw = shiftData?.shiftsByLocation ?? [];
+        return raw.map((s) => ({
+            id: String(s.id),
+            role: s.role ?? 'Shift',
+            location: s.location.name,
+            startISO: s.startTime,
+            endISO: s.endTime,
+        }));
+    }, [shiftData]);
+
+    // ─── Derived UI values ────────────────────────────────────────
     const displayName = useMemo(
-        () => user?.display_name || user?.username || 'Employee',
-        [user]
+        () =>
+            graphUser?.display_name ||
+            graphUser?.username ||
+            authUser?.display_name ||
+            authUser?.username ||
+            'Employee',
+        [graphUser, authUser],
     );
 
     const initials = useMemo(() => {
         const base = displayName || '';
         const parts = base.trim().split(/\s+/);
         if (!parts.length) return 'ME';
-        const letters = parts.map((p) => p[0]).join('');
+        const letters = parts.map((p: string) => p[0]).join('');
         return letters.slice(0, 2).toUpperCase();
     }, [displayName]);
 
     const selectedLocationName = useMemo(() => {
-        if (!selectedLocationId) return 'Select location';
+        if (!selectedLocationId && graphUser?.primaryLocation?.name) {
+            return graphUser.primaryLocation.name;
+        }
+        if (!selectedLocationId) return 'Assigned location';
         const loc = locations.find((l) => l.id === selectedLocationId);
-        return loc?.name ?? 'Select location';
-    }, [locations, selectedLocationId]);
+        return (
+            loc?.name ??
+            graphUser?.primaryLocation?.name ??
+            'Assigned location'
+        );
+    }, [locations, selectedLocationId, graphUser]);
 
     const locationNames = useMemo(
         () => locations.map((l) => l.name),
-        [locations]
+        [locations],
     );
 
-    // ---------- Load locations once ----------
-    useEffect(() => {
-        let mounted = true;
+    const showShifts: Shift[] = shifts ?? [];
 
-        const loadLocations = async () => {
-            try {
-                // adjust path to your real endpoint
-                const res = await api.get('/employee/locations');
-                const list: LocationOption[] = res.data?.locations ?? [];
-
-                if (!mounted) return;
-
-                setLocations(list);
-
-                // default to user.home location if present, else first
-                const byUser =
-                    list.find((l) => l.id === user?.location_id) ?? list[0];
-                if (byUser) setSelectedLocationId(byUser.id);
-            } catch (err) {
-                console.error('[Home] loadLocations error', err);
-            }
-        };
-
-        loadLocations();
-        return () => {
-            mounted = false;
-        };
-    }, [user?.location_id]);
-
-    // ---------- Load shifts whenever location changes ----------
-    const fetchShifts = useCallback(
-        async (locId: number | null) => {
-            if (!locId) {
-                setShifts([]);
-                return;
-            }
-            setLoadingShifts(true);
-            try {
-                // adjust path/shape to match your backend
-                const res = await api.get(
-                    `/employee/locations/${locId}/shifts`
-                );
-
-                const raw = res.data?.shifts ?? [];
-                // map backend fields -> NextShiftCard Shift type
-                const mapped: Shift[] = raw.map((s: any) => ({
-                    id: String(s.shift_id ?? s.id),
-                    role: s.role ?? s.position ?? 'Shift',
-                    location: s.location_name ?? s.location ?? '',
-                    startISO: s.start_time ?? s.startISO,
-                    endISO: s.end_time ?? s.endISO,
-                    // Optional: punch state fields if backend sends them
-                    punchState: s.punch_state, // 'not-started' | 'ongoing' | 'break' | 'finished'
-                    breakFromISO: s.break_from,
-                }));
-
-                setShifts(mapped);
-            } catch (err) {
-                console.error('[Home] fetchShifts error', err);
-                setShifts([]);
-            } finally {
-                setLoadingShifts(false);
-            }
-        },
-        []
-    );
-
-    useEffect(() => {
-        fetchShifts(selectedLocationId);
-    }, [selectedLocationId, fetchShifts]);
-
-    // ---------- Pull-to-refresh ----------
+    // ─── Handlers ─────────────────────────────────────────────────
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await Promise.all([
-            fetchShifts(selectedLocationId),
-            // you could also reload locations / team / alerts here later
+            refetchLocations(),
+            selectedLocationId ? refetchShifts() : Promise.resolve(),
         ]);
         setRefreshing(false);
-    }, [fetchShifts, selectedLocationId]);
+    }, [refetchLocations, refetchShifts, selectedLocationId]);
 
-    // ---------- Handlers ----------
     const handleChangeLocation = (name: string) => {
         const loc = locations.find((l) => l.name === name);
         if (loc) setSelectedLocationId(loc.id);
@@ -188,7 +217,7 @@ export default function HomeScreen({ navigation }: any) {
                 contentContainerStyle={{ padding: 16 }}
                 refreshControl={
                     <RefreshControl
-                        refreshing={refreshing || loadingShifts}
+                        refreshing={refreshing || loadingShifts || loadingLocations}
                         onRefresh={onRefresh}
                     />
                 }
@@ -197,7 +226,9 @@ export default function HomeScreen({ navigation }: any) {
                     name={displayName}
                     initials={initials}
                     onAvatarPress={() => navigation.navigate?.('ProfileSettings')}
-                    locations={locationNames}
+                    locations={
+                        locationNames.length ? locationNames : [selectedLocationName]
+                    }
                     selectedLocation={selectedLocationName}
                     onChangeLocation={handleChangeLocation}
                     onLogout={logout}
@@ -206,7 +237,7 @@ export default function HomeScreen({ navigation }: any) {
                 {/* Row: Shifts + Quick Actions */}
                 <View style={styles.row}>
                     <NextShiftCard
-                        upcoming={shifts}
+                        upcoming={showShifts}
                         maxListHeight={260}
                         onViewSchedule={() =>
                             navigation.navigate?.('Schedule', {
@@ -255,9 +286,6 @@ export default function HomeScreen({ navigation }: any) {
 
                 <TeamOnDutyCard members={mockTeamToday} />
                 <AlertsCard alerts={mockAlerts} onItemPress={() => { }} />
-
-                {/* If you don’t want a FAB for employees, remove this */}
-                {/* <FloatingActionButton onPress={() => {}} /> */}
 
                 <View style={{ height: 80 }} />
             </ScrollView>

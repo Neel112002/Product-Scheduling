@@ -1,165 +1,189 @@
-// src/screens/LoginScreen.tsx
 import React, { useContext, useState } from 'react';
 import {
     View,
     Text,
     TextInput,
-    TouchableOpacity,
     StyleSheet,
-    Image,
+    Pressable,
     ActivityIndicator,
+    Alert,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { loginSchema } from '../validation/schemas';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
-
-type Form = z.infer<typeof loginSchema>;
-
-const PURPLE = '#7B4AE2';
+import { colors } from '../theme/colors';
 
 export default function LoginScreen({ navigation }: any) {
     const { login } = useContext(AuthContext);
-    const [apiError, setApiError] = useState('');
-    const { setValue, handleSubmit, formState: { errors, isSubmitting } } =
-        useForm<Form>({ resolver: zodResolver(loginSchema) });
 
-    const onSubmit = async (data: Form) => {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const handleLogin = async () => {
+        const trimmedEmail = email.trim();
+
+        if (!trimmedEmail || !password) {
+            Alert.alert('Missing info', 'Please enter both email and password.');
+            return;
+        }
+
+        setSubmitting(true);
         try {
-            setApiError('');
-            await login(data.email, data.password);
-        } catch (e: any) {
+            await login(trimmedEmail, password);
+            // No manual navigation needed: RootNavigator will switch to App stack
+        } catch (err: any) {
+            console.error('[LoginScreen] login error:', err);
             const msg =
-                e?.response?.data?.error ||
-                e?.response?.data?.message ||
-                (typeof e?.response?.data === 'string' ? e.response.data : '') ||
-                e?.message ||
-                'Login failed';
-            setApiError(msg);
+                err?.graphQLErrors?.[0]?.message ||
+                err?.message ||
+                'Login failed. Please check your credentials and try again.';
+            Alert.alert('Login failed', msg);
+        } finally {
+            setSubmitting(false);
         }
     };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-            <View style={styles.card}>
-                <Image
-                    source={require('../../assets/logo.png')}
-                    style={styles.logo}
-                    resizeMode="contain"
-                />
+        <SafeAreaView style={styles.safe}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <View style={styles.container}>
+                    <View style={styles.header}>
+                        <Text style={styles.title}>Welcome back</Text>
+                        <Text style={styles.subtitle}>
+                            Sign in to manage your shifts and schedule.
+                        </Text>
+                    </View>
 
-                <Text style={styles.title}>Welcome Back!</Text>
-                <Text style={styles.subtitle}>Sign in to continue</Text>
+                    <View style={styles.card}>
+                        <Text style={styles.label}>Email</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={email}
+                            onChangeText={setEmail}
+                            placeholder="you@yourcafe.com"
+                            keyboardType="email-address"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            placeholderTextColor={colors.gray}
+                        />
 
-                <View style={{ marginTop: 30, width: '100%' }}>
-                    <Text style={styles.label}>Email</Text>
-                    <TextInput
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        style={styles.input}
-                        onChangeText={(v) => setValue('email', v)}
-                    />
-                    {errors.email && <Text style={styles.error}>{errors.email.message}</Text>}
+                        <Text style={styles.label}>Password</Text>
+                        <TextInput
+                            style={styles.input}
+                            value={password}
+                            onChangeText={setPassword}
+                            placeholder="••••••••"
+                            secureTextEntry
+                            autoCapitalize="none"
+                            placeholderTextColor={colors.gray}
+                        />
 
-                    <Text style={[styles.label, { marginTop: 16 }]}>Password</Text>
-                    <TextInput
-                        secureTextEntry
-                        style={styles.input}
-                        onChangeText={(v) => setValue('password', v)}
-                    />
-                    {errors.password && <Text style={styles.error}>{errors.password.message}</Text>}
+                        <Pressable
+                            onPress={() =>
+                                navigation.navigate?.('ForgotPasswordRequest')
+                            }
+                            style={styles.forgotLink}
+                        >
+                            <Text style={styles.forgotText}>Forgot password?</Text>
+                        </Pressable>
 
-                    {apiError ? <Text style={styles.error}>{apiError}</Text> : null}
-
-                    <TouchableOpacity
-                        style={styles.forgotButton}
-                        onPress={() => navigation.navigate('ForgotPasswordRequest')}
-                    >
-                        <Text style={styles.forgotText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={styles.signInButton}
-                        onPress={handleSubmit(onSubmit)}
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.signInText}>Sign In</Text>
-                        )}
-                    </TouchableOpacity>
-
-                    {/* ❗ Only Owner Signup remains */}
-                    <View style={styles.ownerContainer}>
-                        <Text style={styles.grayText}>Own a store or café? </Text>
-                        <TouchableOpacity onPress={() => navigation.navigate('OwnerSignup')}>
-                            <Text style={styles.ownerText}>Create a company account</Text>
-                        </TouchableOpacity>
+                        <Pressable
+                            onPress={handleLogin}
+                            disabled={submitting}
+                            style={({ pressed }) => [
+                                styles.primaryButton,
+                                submitting && { opacity: 0.6 },
+                                pressed && !submitting && { opacity: 0.9 },
+                            ]}
+                        >
+                            {submitting ? (
+                                <ActivityIndicator color={colors.buttonText} />
+                            ) : (
+                                <Text style={styles.primaryButtonText}>Sign in</Text>
+                            )}
+                        </Pressable>
                     </View>
                 </View>
-            </View>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
+    safe: {
+        flex: 1,
+        backgroundColor: colors.background,
+    },
     container: {
         flex: 1,
-        backgroundColor: '#f8f8ff',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
+        paddingHorizontal: 20,
+        paddingTop: 40,
+    },
+    header: {
+        marginBottom: 32,
+    },
+    title: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: colors.text,
+    },
+    subtitle: {
+        marginTop: 4,
+        fontSize: 13,
+        color: colors.gray,
     },
     card: {
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 28,
-        width: '100%',
+        backgroundColor: colors.background,
+        borderRadius: 16,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: '#00000010',
         shadowColor: '#000',
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 4,
-        alignItems: 'center',
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+        elevation: 2,
     },
-    logo: { width: 90, height: 90 },
-    title: {
-        fontSize: 22,
-        fontWeight: '600',
-        color: PURPLE,
-        marginTop: 16,
+    label: {
+        fontSize: 13,
+        color: colors.text,
+        marginBottom: 4,
+        marginTop: 8,
     },
-    subtitle: { color: '#777', fontSize: 14, marginTop: 4 },
-    label: { color: '#444', fontSize: 14, fontWeight: '500' },
     input: {
         borderWidth: 1,
-        borderColor: '#ddd',
-        borderRadius: 8,
-        padding: 10,
-        marginTop: 6,
+        borderColor: colors.inputBorder,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        fontSize: 14,
+        color: colors.text,
     },
-    signInButton: {
-        backgroundColor: PURPLE,
-        paddingVertical: 14,
-        borderRadius: 8,
+    forgotLink: {
+        alignSelf: 'flex-end',
+        marginTop: 8,
+        marginBottom: 16,
+    },
+    forgotText: {
+        fontSize: 12,
+        color: colors.primary,
+        fontWeight: '600',
+    },
+    primaryButton: {
+        marginTop: 4,
+        borderRadius: 999,
+        backgroundColor: colors.primary,
+        paddingVertical: 12,
         alignItems: 'center',
-        marginTop: 24,
-    },
-    signInText: { color: '#fff', fontWeight: '600', fontSize: 16 },
-    forgotButton: { marginTop: 10, alignSelf: 'flex-end' },
-    forgotText: { color: PURPLE, fontSize: 13 },
-    grayText: { color: '#666' },
-    ownerContainer: {
-        flexDirection: 'row',
-        marginTop: 24,
         justifyContent: 'center',
     },
-    ownerText: { color: PURPLE, fontWeight: '600' },
-    error: { color: 'red', marginTop: 4, fontSize: 13 },
+    primaryButtonText: {
+        color: colors.buttonText,
+        fontWeight: '700',
+        fontSize: 15,
+    },
 });
