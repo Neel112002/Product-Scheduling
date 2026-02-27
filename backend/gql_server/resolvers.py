@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from ariadne import QueryType, MutationType, ObjectType
@@ -6,26 +5,27 @@ from graphql import GraphQLError
 from flask_jwt_extended import create_access_token, create_refresh_token
 
 from extensions import db
-from models import AppUser, Company, Location, Employment, Shift
+from models import AppUser, Location, Employment, Role, Company
 from services.auth_service import AuthService
-from services.onboarding_service import OnboardingService
 from services.team_service import TeamService
+from services.rbac_service import can_modify_role
 
 
 query = QueryType()
 mutation = MutationType()
-auth_payload = ObjectType("AuthPayload")
-user_object = ObjectType("User")   # 🔥 NEW
 
+auth_payload = ObjectType("AuthPayload")
+user_object = ObjectType("User")
+role_object = ObjectType("Role")
+location_object = ObjectType("Location")
+company_object = ObjectType("Company")
 
 auth_service = AuthService()
-onboarding_service = OnboardingService()
 team_service = TeamService()
 
-
-# ================================
+# =====================================================
 # Helpers
-# ================================
+# =====================================================
 
 def get_current_user(info) -> Optional[AppUser]:
     return info.context.get("current_user")
@@ -38,93 +38,151 @@ def require_user(info) -> AppUser:
     return user
 
 
-def map_company(company: Company):
-    if not company:
-        return None
-    return {
-        "id": company.comp_id,
-        "name": company.comp_name,
-        "email": company.comp_email,
-        "address": company.comp_address,
-    }
+# =====================================================
+# AuthPayload Resolvers
+# =====================================================
+
+@auth_payload.field("accessToken")
+def resolve_auth_access(obj, *_):
+    return obj["accessToken"]
 
 
-def map_location(location: Location):
-    if not location:
-        return None
-    return {
-        "id": location.loc_id,
-        "name": location.loc_name,
-        "address": location.loc_address,
-    }
+@auth_payload.field("refreshToken")
+def resolve_auth_refresh(obj, *_):
+    return obj["refreshToken"]
 
 
-def map_user(user: AppUser):
-
-    role = None
-    is_active = False
-    company = None
-    primary_location = None
-
-    employments = getattr(user, "employments", []) or []
-
-    for emp in employments:
-        if emp.status == "active":
-            role = (emp.position or "").strip().lower()
-            is_active = True
-            company = emp.company
-            primary_location = emp.location
-            break
-
-    return {
-        "id": user.user_id,
-        "user_id": user.user_id,
-        "username": user.username,
-        "user_email": user.user_email,
-        "display_name": user.display_name,
-        "role": role,
-        "isActive": bool(is_active),  # 🔥 ALWAYS BOOLEAN
-        "company": map_company(company),
-        "primaryLocation": map_location(primary_location),
-    }
+@auth_payload.field("user")
+def resolve_auth_user(obj, *_):
+    return obj["user"]
 
 
-# ================================
-# 🔥 GraphQL Type Safety Layer
-# ================================
+# =====================================================
+# ID Mapping
+# =====================================================
+
+@user_object.field("id")
+def resolve_user_id(user: AppUser, *_):
+    return user.user_id
+
+
+@role_object.field("id")
+def resolve_role_id(role: Role, *_):
+    return role.role_id
+
+
+@location_object.field("id")
+def resolve_location_id(location: Location, *_):
+    return location.loc_id
+
+
+@company_object.field("id")
+def resolve_company_id(company: Company, *_):
+    return company.comp_id
+
+
+# =====================================================
+# Role Field Mapping
+# =====================================================
+
+@role_object.field("locationId")
+def resolve_role_location_id(role: Role, *_):
+    return role.location_id
+
+
+@role_object.field("isSystem")
+def resolve_role_is_system(role: Role, *_):
+    return role.is_system
+
+
+# =====================================================
+# Location Field Mapping
+# =====================================================
+
+@location_object.field("name")
+def resolve_location_name(location: Location, *_):
+    return location.loc_name
+
+
+@location_object.field("address")
+def resolve_location_address(location: Location, *_):
+    return location.loc_address
+
+
+@location_object.field("company")
+def resolve_location_company(location: Location, *_):
+    return location.company
+
+
+# =====================================================
+# Company Field Mapping
+# =====================================================
+
+@company_object.field("name")
+def resolve_company_name(company: Company, *_):
+    return company.comp_name
+
+
+@company_object.field("email")
+def resolve_company_email(company: Company, *_):
+    return company.comp_email
+
+
+@company_object.field("address")
+def resolve_company_address(company: Company, *_):
+    return company.comp_address
+
+
+# =====================================================
+# User Field Mapping
+# =====================================================
 
 @user_object.field("isActive")
-def resolve_user_is_active(obj, *_):
-
-    # If resolver returned dict
-    if isinstance(obj, dict):
-        value = obj.get("isActive")
-        return bool(value) if value is not None else False
-
-    # If resolver returned SQLAlchemy model
-    if hasattr(obj, "is_active"):
-        return bool(obj.is_active)
-
+def resolve_user_is_active(user: AppUser, *_):
+    for emp in user.employments:
+        if emp.status == "active":
+            return True
     return False
 
 
-# ================================
+@user_object.field("role")
+def resolve_user_role(user: AppUser, *_):
+    for emp in user.employments:
+        if emp.status == "active" and emp.role:
+            return emp.role
+    raise GraphQLError("User has no active role assigned")
+
+
+@user_object.field("company")
+def resolve_user_company(user: AppUser, *_):
+    for emp in user.employments:
+        if emp.status == "active" and emp.company:
+            return emp.company
+    return None
+
+
+@user_object.field("primaryLocation")
+def resolve_user_primary_location(user: AppUser, *_):
+    for emp in user.employments:
+        if emp.status == "active" and emp.location:
+            return emp.location
+    return None
+
+
+# =====================================================
 # Queries
-# ================================
+# =====================================================
 
 @query.field("me")
 def resolve_me(_, info):
-    user = get_current_user(info)
-    if not user:
-        return None
-    return map_user(user)
+    return get_current_user(info)
 
 
 @query.field("myLocations")
 def resolve_my_locations(_, info):
     user = require_user(info)
 
-    locations = (
+    return (
         db.session.query(Location)
         .join(Employment, Employment.location_id == Location.loc_id)
         .filter(
@@ -133,31 +191,6 @@ def resolve_my_locations(_, info):
         )
         .all()
     )
-
-    return [map_location(loc) for loc in locations]
-
-
-@query.field("shiftsByLocation")
-def resolve_shifts_by_location(_, info, locationId: int):
-    user = require_user(info)
-
-    shifts = (
-        Shift.query
-        .filter_by(location_id=locationId, user_id=user.user_id)
-        .order_by(Shift.start_time.asc())
-        .all()
-    )
-
-    return [
-        {
-            "id": s.shift_id,
-            "location": map_location(s.location),
-            "startTime": s.start_time,
-            "endTime": s.end_time,
-            "role": getattr(s, "role", None) or getattr(s, "status", None),
-        }
-        for s in shifts
-    ]
 
 
 @query.field("teamMembers")
@@ -169,21 +202,36 @@ def resolve_team_members(_, info, locationId: int):
             requester_id=user.user_id,
             location_id=locationId
         )
-
     except PermissionError:
         raise GraphQLError("Forbidden")
 
-    except Exception:
-        raise GraphQLError("Something went wrong")
+
+@query.field("locationRoles")
+def resolve_location_roles(_, info, locationId: int):
+    user = require_user(info)
+
+    emp = Employment.query.filter_by(
+        user_id=user.user_id,
+        location_id=locationId,
+        status="active"
+    ).first()
+
+    if not emp:
+        raise GraphQLError("Forbidden")
+
+    return Role.query.filter_by(location_id=locationId).all()
 
 
-# ================================
+# =====================================================
 # Mutations
-# ================================
+# =====================================================
 
 @mutation.field("login")
 def resolve_login(_, info, email: str, password: str):
-    user = auth_service.authenticate(email.strip().lower(), password.strip())
+    user = auth_service.authenticate(
+        email.strip().lower(),
+        password.strip()
+    )
 
     if not user:
         raise GraphQLError("Invalid email or password")
@@ -194,20 +242,102 @@ def resolve_login(_, info, email: str, password: str):
     return {
         "accessToken": access,
         "refreshToken": refresh,
-        "user": map_user(user),
+        "user": user,
     }
 
 
-@auth_payload.field("accessToken")
-def resolve_authpayload_access_token(obj, info):
-    return obj.get("accessToken")
+@mutation.field("createRole")
+def resolve_create_role(_, info, locationId: int, name: str):
+    user = require_user(info)
+
+    current_emp = Employment.query.filter_by(
+        user_id=user.user_id,
+        location_id=locationId,
+        status="active"
+    ).first()
+
+    if not current_emp or current_emp.role.name.lower() != "owner":
+        raise GraphQLError("Only owner can create roles")
+
+    existing = Role.query.filter_by(
+        location_id=locationId,
+        name=name.strip()
+    ).first()
+
+    if existing:
+        raise GraphQLError("Role already exists")
+
+    role = Role(
+        name=name.strip(),
+        location_id=locationId,
+        is_system=False,
+        created_by=user.user_id,
+    )
+
+    db.session.add(role)
+    db.session.commit()
+
+    return role
 
 
-@auth_payload.field("refreshToken")
-def resolve_authpayload_refresh_token(obj, info):
-    return obj.get("refreshToken")
+@mutation.field("deleteRole")
+def resolve_delete_role(_, info, roleId: int):
+    user = require_user(info)
+
+    role = Role.query.get(roleId)
+    if not role:
+        raise GraphQLError("Role not found")
+
+    current_emp = Employment.query.filter_by(
+        user_id=user.user_id,
+        location_id=role.location_id,
+        status="active"
+    ).first()
+
+    if not current_emp or current_emp.role.name.lower() != "owner":
+        raise GraphQLError("Only owner can delete roles")
+
+    if role.is_system:
+        raise GraphQLError("System roles cannot be deleted")
+
+    if role.employments:
+        raise GraphQLError("Role has assigned users")
+
+    db.session.delete(role)
+    db.session.commit()
+
+    return True
 
 
-@auth_payload.field("user")
-def resolve_authpayload_user(obj, info):
-    return obj.get("user")
+@mutation.field("updateUserRole")
+def resolve_update_user_role(_, info, empId: int, roleId: int):
+    user = require_user(info)
+
+    target_emp = Employment.query.get(empId)
+    new_role = Role.query.get(roleId)
+
+    if not target_emp or not new_role:
+        raise GraphQLError("Invalid input")
+
+    current_emp = Employment.query.filter_by(
+        user_id=user.user_id,
+        location_id=target_emp.location_id,
+        status="active"
+    ).first()
+
+    if not current_emp:
+        raise GraphQLError("Forbidden")
+
+    if new_role.location_id != target_emp.location_id:
+        raise GraphQLError("Cross-location assignment forbidden")
+
+    if not can_modify_role(current_emp, target_emp):
+        raise GraphQLError("Forbidden")
+
+    if new_role.name.lower() == "owner" and target_emp.role.name.lower() != "owner":
+        raise GraphQLError("Cannot assign Owner role")
+
+    target_emp.role_id = new_role.role_id
+    db.session.commit()
+
+    return target_emp.user

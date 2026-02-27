@@ -1,4 +1,5 @@
 // src/context/AuthContext.tsx
+
 import React, {
     createContext,
     useCallback,
@@ -18,15 +19,20 @@ import {
 } from '../utils/secureStore';
 
 // ─────────────────────────────────────────────
-// Types
+// Types (UPDATED FOR RBAC)
 // ─────────────────────────────────────────────
+
+export type Role = {
+    id: number;
+    name: string;
+    isSystem: boolean;
+};
+
 export type AuthUser = {
-    user_id: number;
+    id: number;
     username: string;
-    user_email: string;
-    display_name?: string | null;
-    role?: string | null;
-    company?: { id: number; name: string } | null;
+    isActive: boolean;
+    role: Role;
     primaryLocation?: { id: number; name: string } | null;
 };
 
@@ -46,7 +52,6 @@ type AuthContextType = {
     ready: boolean;
     isAuthenticated: boolean;
     user: AuthUser | null;
-    role: string | null;
 
     login: (email: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
@@ -54,26 +59,27 @@ type AuthContextType = {
     setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
 };
 
+// ─────────────────────────────────────────────
+
 export const AuthContext = createContext<AuthContextType>({
     ready: false,
     isAuthenticated: false,
     user: null,
-    role: null,
-    login: async () => {},
-    logout: async () => {},
-    setUser: () => {},
+    login: async () => { },
+    logout: async () => { },
+    setUser: () => { },
 });
 
 // ─────────────────────────────────────────────
 // Provider
 // ─────────────────────────────────────────────
+
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({
     children,
 }) => {
     const [ready, setReady] = useState(false);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [user, setUser] = useState<AuthUser | null>(null);
-    const [role, setRole] = useState<string | null>(null);
 
     // 🔥 Proper Session Rehydration
     useEffect(() => {
@@ -93,7 +99,6 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
                     return;
                 }
 
-                // Validate token via backend
                 const { data } = await apolloClient.query<MeQueryData>({
                     query: ME_QUERY,
                     fetchPolicy: 'network-only',
@@ -103,7 +108,6 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
 
                 if (data?.me) {
                     setUser(data.me);
-                    setRole(data.me.role ?? null);
                     setIsAuthenticated(true);
                 } else {
                     await clearTokens();
@@ -126,8 +130,9 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
     }, []);
 
     // ─────────────────────────────────────────────
-    // LOGIN (GraphQL)
+    // LOGIN
     // ─────────────────────────────────────────────
+
     const login = useCallback(async (email: string, password: string) => {
         try {
             const { data } = await apolloClient.mutate<LoginMutationData>({
@@ -143,7 +148,6 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
             await setTokens(payload.accessToken, payload.refreshToken);
 
             setUser(payload.user);
-            setRole(payload.user.role ?? null);
             setIsAuthenticated(true);
         } catch (err) {
             console.error('[AuthContext] Login error:', err);
@@ -154,29 +158,28 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
     // ─────────────────────────────────────────────
     // LOGOUT
     // ─────────────────────────────────────────────
+
     const logout = useCallback(async () => {
         await clearTokens();
         setIsAuthenticated(false);
         setUser(null);
-        setRole(null);
-
         await apolloClient.clearStore();
     }, []);
 
     // ─────────────────────────────────────────────
     // PROVIDER VALUE
     // ─────────────────────────────────────────────
+
     const value = useMemo(
         () => ({
             ready,
             isAuthenticated,
             user,
-            role,
             login,
             logout,
             setUser,
         }),
-        [ready, isAuthenticated, user, role, login, logout],
+        [ready, isAuthenticated, user, login, logout],
     );
 
     if (!ready) return null;

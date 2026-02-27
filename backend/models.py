@@ -83,27 +83,51 @@ class ShiftAssignment(db.Model):
 
 
 # 7) Employment (linking User ↔ Company ↔ Location)
+# 7) Employment (linking User ↔ Company ↔ Location)
 class Employment(db.Model):
     __tablename__ = "employment"
-    __table_args__ = (
-        UniqueConstraint("user_id", "comp_id", "location_id", name="ux_employment_user_comp_loc"),
+
+    emp_id = db.Column(db.BigInteger, primary_key=True)
+
+    user_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("app_user.user_id", ondelete="CASCADE"),
+        nullable=False,
     )
 
-    emp_id = db.Column(BigInteger, primary_key=True)
-    user_id = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), nullable=False)
-    comp_id = db.Column(BigInteger, db.ForeignKey("company.comp_id", ondelete="CASCADE"), nullable=False)
-    location_id = db.Column(BigInteger, db.ForeignKey("location.loc_id", ondelete="SET NULL"))
-    # 🔥 default role = employee; owner override is set in RegistrationService
-    position = db.Column(Text, nullable=False, default="employee")
-    status = db.Column(Text, nullable=False, default="active")
-    start_date = db.Column(Date, nullable=False, default=date.today)
-    end_date = db.Column(Date)
+    comp_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("company.comp_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("location.loc_id", ondelete="SET NULL"),
+    )
+
+    role_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("role.role_id"),
+        nullable=False,
+        index=True,
+    )
+
+    status = db.Column(db.Text, nullable=False, default="active")
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date)
 
     user = db.relationship("AppUser", back_populates="employments")
     company = db.relationship("Company", back_populates="employments")
     location = db.relationship("Location", back_populates="employments")
-    availabilities = db.relationship("Availability", back_populates="employment", cascade="all, delete-orphan")
+    role = db.relationship("Role", back_populates="employments")
 
+    # ✅ THIS WAS MISSING (REQUIRED)
+    availabilities = db.relationship(
+        "Availability",
+        back_populates="employment",
+        cascade="all, delete-orphan"
+    )
 
 # 8) Availability (linked via Employment)
 class Availability(db.Model):
@@ -189,3 +213,24 @@ class EmailVerificationToken(db.Model):
         "AppUser",
         backref=db.backref("email_verification_tokens", lazy="dynamic"),
     )
+
+
+class Role(db.Model):
+    __tablename__ = "role"
+
+    role_id = db.Column(db.BigInteger, primary_key=True)
+    name = db.Column(db.Text, nullable=False)
+    location_id = db.Column(
+        db.BigInteger,
+        db.ForeignKey("location.loc_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_system = db.Column(db.Boolean, nullable=False, default=False)
+    created_by = db.Column(
+        db.BigInteger,
+        db.ForeignKey("app_user.user_id"),
+        nullable=True,
+    )
+
+    employments = db.relationship("Employment", back_populates="role")

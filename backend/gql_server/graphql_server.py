@@ -14,8 +14,16 @@ from flask import request, jsonify
 
 from .auth_middleware import build_graphql_context
 
-# 🔥 IMPORT user_object HERE
-from .resolvers import query, mutation, auth_payload, user_object
+# ✅ IMPORT ALL OBJECT TYPES
+from .resolvers import (
+    query,
+    mutation,
+    auth_payload,
+    user_object,
+    role_object,
+    location_object,
+    company_object,
+)
 
 
 # --- GraphQL Playground HTML ---
@@ -23,7 +31,6 @@ from .resolvers import query, mutation, auth_payload, user_object
 PLAYGROUND_HTML = """
 <!DOCTYPE html>
 <html>
-
 <head>
   <meta charset=utf-8/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -34,7 +41,6 @@ PLAYGROUND_HTML = """
     href="//cdn.jsdelivr.net/npm/graphql-playground-react/build/favicon.png" />
   <script src="//cdn.jsdelivr.net/npm/graphql-playground-react/build/static/js/middleware.js"></script>
 </head>
-
 <body>
   <div id="root"></div>
   <script>
@@ -45,7 +51,6 @@ PLAYGROUND_HTML = """
     })
   </script>
 </body>
-
 </html>
 """
 
@@ -75,14 +80,15 @@ def create_schema():
 
     schema = make_executable_schema(
         type_defs,
-        [
-            query,
-            mutation,
-            auth_payload,
-            user_object,  # 🔥 THIS WAS MISSING
-            datetime_scalar,
-            snake_case_fallback_resolvers,
-        ],
+        query,
+        mutation,
+        auth_payload,
+        user_object,
+        role_object,          # ✅ ADDED
+        location_object,      # ✅ ADDED
+        company_object,       # ✅ ADDED
+        datetime_scalar,
+        snake_case_fallback_resolvers,
     )
 
     return schema

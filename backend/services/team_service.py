@@ -1,20 +1,10 @@
-# services/team_service.py
-
-from typing import List
-from extensions import db
-from models import AppUser, Employment, Location
+from models import AppUser, Employment
 
 
 class TeamService:
 
-    def get_team_members(self, *, requester_id: int, location_id: int) -> List[dict]:
+    def get_team_members(self, *, requester_id: int, location_id: int):
 
-        # 1️⃣ Check location exists
-        location = Location.query.filter_by(loc_id=location_id).first()
-        if not location:
-            return []
-
-        # 2️⃣ Check requester permission
         requester_emp = (
             Employment.query
             .filter_by(
@@ -28,30 +18,14 @@ class TeamService:
         if not requester_emp:
             raise PermissionError("Forbidden")
 
-        if (requester_emp.position or "").lower() not in ("owner", "manager"):
+        if requester_emp.role.name.lower() not in ("owner", "manager"):
             raise PermissionError("Forbidden")
 
-        # 3️⃣ Optimized join query (no N+1)
-        results = (
-            db.session.query(AppUser, Employment)
-            .join(Employment, Employment.user_id == AppUser.user_id)
+        users = (
+            AppUser.query
+            .join(Employment)
             .filter(Employment.location_id == location_id)
             .all()
         )
 
-        members = []
-
-        for user, emp in results:
-            members.append({
-                "id": user.user_id,
-                "user_id": user.user_id,
-                "username": user.username,
-                "user_email": user.user_email,
-                "display_name": user.display_name,
-                "role": emp.position.lower() if emp.position else None,
-                "isActive": bool(emp.status == "active"),  # 🔥 ALWAYS BOOLEAN
-                "company": None,
-                "primaryLocation": None,
-            })
-
-        return members
+        return users

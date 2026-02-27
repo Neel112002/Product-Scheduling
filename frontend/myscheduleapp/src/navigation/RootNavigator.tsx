@@ -38,14 +38,18 @@ const linking: LinkingOptions<RootParamList> = {
 };
 
 export default function RootNavigator() {
-    const { isAuthenticated, role, ready } = useContext(AuthContext);
+    const { isAuthenticated, user, ready } = useContext(AuthContext);
 
-    if (!ready) {
-        return null; // or Splash component
-    }
+    if (!ready) return null;
 
-    const isAdmin = role === 'owner' || role === 'manager';
-    const initialAppRoute = isAdmin ? 'AdminDashboard' : 'Dashboard';
+    const roleName = user?.role?.name?.toLowerCase();
+
+    const isAdmin =
+        roleName === 'owner' || roleName === 'manager';
+
+    const initialAppRoute = isAdmin
+        ? 'AdminDashboard'
+        : 'Dashboard';
 
     return (
         <ApolloProvider client={apolloClient}>
@@ -54,7 +58,7 @@ export default function RootNavigator() {
                     key={isAuthenticated ? `app-${initialAppRoute}` : 'auth'}
                     screenOptions={{ headerShown: false }}
                 >
-                    {isAuthenticated && role ? (
+                    {isAuthenticated && user ? (
                         <Root.Screen
                             name="App"
                             children={() => (

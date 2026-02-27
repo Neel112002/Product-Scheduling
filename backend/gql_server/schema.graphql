@@ -1,15 +1,19 @@
-
-# schema.graphql
-
 scalar DateTime
 
+type Role {
+  id: Int!
+  name: String!
+  locationId: Int!
+  isSystem: Boolean!
+}
+
 type User {
-  id: Int!                 # 🔥 NEW (frontend-friendly)
+  id: Int!
   user_id: Int!
   username: String!
   user_email: String!
   display_name: String
-  role: String
+  role: Role!
   isActive: Boolean!
   company: Company
   primaryLocation: Location
@@ -54,14 +58,16 @@ type Query {
   me: User
   myLocations: [Location!]!
   shiftsByLocation(locationId: Int!): [Shift!]!
-
-  # 🔥 TEAM QUERY
   teamMembers(locationId: Int!): [User!]!
+
+  # 🔥 RBAC
+  locationRoles(locationId: Int!): [Role!]!
 }
 
 type Mutation {
   login(email: String!, password: String!): AuthPayload!
-  sendOnboardingInvite(email: String!, locationId: Int!, position: String): InviteResult!
-  createShift(locationId: Int!, startTime: DateTime!, endTime: DateTime!, role: String): Shift!
-  updateProfile(displayName: String, phone: String): User!
+
+  createRole(locationId: Int!, name: String!): Role!
+  deleteRole(roleId: Int!): Boolean!
+  updateUserRole(empId: Int!, roleId: Int!): User!
 }
