@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 
 import { apolloClient } from '../graphql/client';
-import { LOGIN_MUTATION } from '../graphql/operations';
+import { LOGIN_MUTATION, ME_QUERY } from '../graphql/operations';
 
 import {
     setTokens,
@@ -38,6 +38,10 @@ type LoginMutationData = {
     };
 };
 
+type MeQueryData = {
+    me: AuthUser;
+};
+
 type AuthContextType = {
     ready: boolean;
     isAuthenticated: boolean;
@@ -47,7 +51,6 @@ type AuthContextType = {
     login: (email: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
 
-    // ✅ expose setter so screens (e.g. CompleteProfile) can update user
     setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
 };
 
@@ -72,26 +75,51 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
     const [user, setUser] = useState<AuthUser | null>(null);
     const [role, setRole] = useState<string | null>(null);
 
-    // Hydrate tokens on startup
+    // 🔥 Proper Session Rehydration
     useEffect(() => {
         let mounted = true;
 
         const load = async () => {
-            const [at, rt] = await Promise.all([
-                getAccessToken(),
-                getRefreshToken(),
-            ]);
+            try {
+                const [at, rt] = await Promise.all([
+                    getAccessToken(),
+                    getRefreshToken(),
+                ]);
 
-            if (!mounted) return;
+                if (!mounted) return;
 
-            if (at && rt) {
-                setIsAuthenticated(true);
+                if (!at || !rt) {
+                    setReady(true);
+                    return;
+                }
+
+                // Validate token via backend
+                const { data } = await apolloClient.query<MeQueryData>({
+                    query: ME_QUERY,
+                    fetchPolicy: 'network-only',
+                });
+
+                if (!mounted) return;
+
+                if (data?.me) {
+                    setUser(data.me);
+                    setRole(data.me.role ?? null);
+                    setIsAuthenticated(true);
+                } else {
+                    await clearTokens();
+                    setIsAuthenticated(false);
+                }
+            } catch (err) {
+                console.log('[AuthContext] Session restore failed:', err);
+                await clearTokens();
+                setIsAuthenticated(false);
+            } finally {
+                if (mounted) setReady(true);
             }
-
-            setReady(true);
         };
 
         load();
+
         return () => {
             mounted = false;
         };
@@ -112,13 +140,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
                 throw new Error('Login mutation returned no login payload');
             }
 
-            // Save tokens
             await setTokens(payload.accessToken, payload.refreshToken);
 
-            // Save user + role
             setUser(payload.user);
             setRole(payload.user.role ?? null);
-
             setIsAuthenticated(true);
         } catch (err) {
             console.error('[AuthContext] Login error:', err);
@@ -134,6 +159,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
         setIsAuthenticated(false);
         setUser(null);
         setRole(null);
+
+        await apolloClient.clearStore();
     }, []);
 
     // ─────────────────────────────────────────────
@@ -147,7 +174,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
             role,
             login,
             logout,
-            setUser, // ✅ exposed here
+            setUser,
         }),
         [ready, isAuthenticated, user, role, login, logout],
     );

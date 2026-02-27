@@ -127,3 +127,16 @@ export const SEND_ONBOARDING_INVITE_MUTATION = gql`
     }
   }
 `;
+
+export const GET_TEAM_MEMBERS_QUERY = gql`
+  query GetTeamMembers($locationId: Int!) {
+    teamMembers(locationId: $locationId) {
+      id
+      username
+      user_email
+      display_name
+      role
+      isActive
+    }
+  }
+`;

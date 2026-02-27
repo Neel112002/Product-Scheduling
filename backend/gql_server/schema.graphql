@@ -4,11 +4,13 @@
 scalar DateTime
 
 type User {
+  id: Int!                 # 🔥 NEW (frontend-friendly)
   user_id: Int!
   username: String!
   user_email: String!
   display_name: String
   role: String
+  isActive: Boolean!
   company: Company
   primaryLocation: Location
 }
@@ -49,26 +51,17 @@ type InviteResult {
 }
 
 type Query {
-  # Return logged-in user, or null if not authenticated
   me: User
-
-  # All locations the user has active employment at
   myLocations: [Location!]!
-
-  # Shifts for current user at a given location
   shiftsByLocation(locationId: Int!): [Shift!]!
+
+  # 🔥 TEAM QUERY
+  teamMembers(locationId: Int!): [User!]!
 }
 
 type Mutation {
-  # Login to get JWT tokens
   login(email: String!, password: String!): AuthPayload!
-
-  # Owner/manager sends onboarding invite
   sendOnboardingInvite(email: String!, locationId: Int!, position: String): InviteResult!
-
-  # Placeholder for shift creation
   createShift(locationId: Int!, startTime: DateTime!, endTime: DateTime!, role: String): Shift!
-
-  # Employee profile update
   updateProfile(displayName: String, phone: String): User!
 }

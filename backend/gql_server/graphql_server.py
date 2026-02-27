@@ -1,4 +1,5 @@
 # gql_server/graphql_server.py
+
 import os
 from datetime import datetime
 
@@ -12,9 +13,12 @@ from ariadne import (
 from flask import request, jsonify
 
 from .auth_middleware import build_graphql_context
-from .resolvers import query, mutation, auth_payload
 
-# --- GraphQL Playground HTML (since Ariadne no longer exports PLAYGROUND_HTML) ---
+# 🔥 IMPORT user_object HERE
+from .resolvers import query, mutation, auth_payload, user_object
+
+
+# --- GraphQL Playground HTML ---
 
 PLAYGROUND_HTML = """
 <!DOCTYPE html>
@@ -45,6 +49,7 @@ PLAYGROUND_HTML = """
 </html>
 """
 
+
 # --- DateTime scalar ---
 
 datetime_scalar = ScalarType("DateTime")
@@ -59,7 +64,6 @@ def serialize_datetime(value):
 
 @datetime_scalar.value_parser
 def parse_datetime_value(value):
-    # Ariadne will call this for incoming DateTime values
     if isinstance(value, str):
         return datetime.fromisoformat(value)
     return value
@@ -68,10 +72,19 @@ def parse_datetime_value(value):
 def create_schema():
     schema_path = os.path.join(os.path.dirname(__file__), "schema.graphql")
     type_defs = load_schema_from_path(schema_path)
+
     schema = make_executable_schema(
         type_defs,
-        [query, mutation, auth_payload, datetime_scalar, snake_case_fallback_resolvers],
+        [
+            query,
+            mutation,
+            auth_payload,
+            user_object,  # 🔥 THIS WAS MISSING
+            datetime_scalar,
+            snake_case_fallback_resolvers,
+        ],
     )
+
     return schema
 
 
@@ -80,11 +93,10 @@ def register_graphql_route(app):
 
     @app.route("/graphql", methods=["GET", "POST"])
     def graphql_server():
+
         if request.method == "GET":
-            # Serve GraphQL Playground
             return PLAYGROUND_HTML, 200, {"Content-Type": "text/html"}
 
-        # POST: GraphQL execution
         data = request.get_json()
         if not data:
             return jsonify({"error": "No input provided"}), 400

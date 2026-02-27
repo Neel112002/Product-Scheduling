@@ -1,10 +1,13 @@
 // src/navigation/AppStack.tsx
+
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
 import HomeScreen from '../screens/HomeScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
+import TeamRolesScreen from '../screens/admin/TeamRolesScreen';
 import CompleteProfileScreen from '../screens/CompleteProfileScreen';
 
 export type AppStackParamList = {
@@ -12,6 +15,7 @@ export type AppStackParamList = {
     AdminDashboard: undefined;
     ProfileSettings: undefined;
     InviteStaff: undefined;
+    TeamRoles: undefined;        // ✅ Added
     CompleteProfile: undefined;
 };
 
@@ -34,35 +38,35 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             <Stack.Screen
                 name="Dashboard"
                 component={HomeScreen}
-                options={{
-                    title: '',
-                    headerShown: false, // clean, full-screen dashboard
-                }}
+                options={{ headerShown: false }}
             />
 
             <Stack.Screen
                 name="AdminDashboard"
                 component={AdminDashboardScreen}
-                options={{
-                    title: 'Admin Dashboard',
-                }}
+                options={{ title: 'Admin Dashboard' }}
             />
 
             <Stack.Screen
                 name="ProfileSettings"
                 component={ProfileSettingsScreen}
-                options={{
-                    title: 'Profile Settings',
-                }}
+                options={{ title: 'Profile Settings' }}
             />
 
             <Stack.Screen
                 name="InviteStaff"
                 component={InviteStaffScreen}
                 options={{
-                    title: 'Invite staff',
+                    title: 'Invite Staff',
                     headerShown: false,
                 }}
+            />
+
+            {/* ✅ NEW SCREEN */}
+            <Stack.Screen
+                name="TeamRoles"
+                component={TeamRolesScreen}
+                options={{ title: 'Team & Roles' }}
             />
 
             <Stack.Screen
