@@ -3,10 +3,7 @@ import os
 from datetime import timedelta
 
 class Config:
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL",
-        "postgresql+psycopg2://postgres:Arth1827@localhost:5432/workscheduler"
-    )
+    SQLALCHEMY_DATABASE_URI = "postgresql://neelshah:neel11@localhost:5432/workscheduler"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JSON_SORT_KEYS = False
 
