@@ -133,6 +133,37 @@ class AuthController:
         )
         return jsonify({"message": "Logged out successfully"}), 200
 
+    # -------- Update Profile --------
+    @jwt_required()
+    def update_profile(self):
+        """
+        PATCH /auth/profile
+        Body: { "display_name": "John Doe" }
+        """
+        from flask_jwt_extended import get_jwt_identity
+        from extensions import db
+
+        user_id = int(get_jwt_identity())
+        data    = request.get_json(silent=True) or {}
+
+        user = self.auth_service.get_user_by_id(user_id)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+
+        display_name = (data.get("display_name") or "").strip()
+        if not display_name:
+            return jsonify({"error": "Display name cannot be empty"}), 400
+        if len(display_name) > 60:
+            return jsonify({"error": "Display name must be under 60 characters"}), 400
+
+        user.display_name = display_name
+        db.session.commit()
+
+        return jsonify({
+            "message": "Profile updated",
+            "user":    self.auth_service.serialize_user(user),
+        }), 200
+    
     # -------- Refresh (issue new access token) --------
     @jwt_required(refresh=True)
     def refresh(self):

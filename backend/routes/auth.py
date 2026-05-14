@@ -58,3 +58,8 @@ def change_password():
 @router.get("/verify-email")
 def verify_email():
     return auth.verify_email()
+
+@router.patch("/profile")
+@jwt_required()
+def update_profile():
+    return auth.update_profile()

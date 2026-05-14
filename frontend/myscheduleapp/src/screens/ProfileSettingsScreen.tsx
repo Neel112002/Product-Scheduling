@@ -8,362 +8,601 @@ import {
     ScrollView,
     Pressable,
     ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons }     from '@expo/vector-icons';
+import { AuthContext }  from '../context/AuthContext';
+import { colors }       from '../theme/colors';
+import { AuthAPI }      from '../api/api';
 
-import { changePasswordSchema } from '../validation/schemas';
-import { AuthContext } from '../context/AuthContext';
-import { colors } from '../theme/colors';
+// ── Component ─────────────────────────────────────────────────────────────────
 
-type Form = z.infer<typeof changePasswordSchema>;
+export default function ProfileSettingsScreen({ navigation }: any) {
+    const { user, setUser, logout } = useContext(AuthContext);
 
-export default function ProfileSettingsScreen() {
-    const { changePassword, user, logout } = useContext(AuthContext);
+    // ── Display name editing ──────────────────────────────────────────────────
+    const [displayName,      setDisplayName]      = useState(user?.display_name ?? '');
+    const [savingName,       setSavingName]       = useState(false);
+    const [nameEditing,      setNameEditing]      = useState(false);
 
-    const [apiError, setApiError] = useState('');
-    const [success, setSuccess] = useState('');
+    // ── Password change ───────────────────────────────────────────────────────
+    const [currentPassword,  setCurrentPassword]  = useState('');
+    const [newPassword,      setNewPassword]      = useState('');
+    const [confirmPassword,  setConfirmPassword]  = useState('');
+    const [savingPassword,   setSavingPassword]   = useState(false);
+    const [showCurrent,      setShowCurrent]      = useState(false);
+    const [showNew,          setShowNew]          = useState(false);
+    const [showConfirm,      setShowConfirm]      = useState(false);
 
-    const {
-        setValue,
-        handleSubmit,
-        formState: { errors, isSubmitting },
-    } = useForm<Form>({
-        resolver: zodResolver(changePasswordSchema),
-    });
+    // ── Derived display values ────────────────────────────────────────────────
+    const shownName   = user?.display_name || user?.username || 'Your profile';
+    const email       = user?.user_email   ?? '';
+    const roleName    = user?.role?.name   ?? 'Employee';
+    const locationName = user?.primaryLocation?.name ?? 'Assigned location';
 
-    const displayName = user?.display_name || user?.username || 'Your profile';
-    const email = user?.user_email || '';
-    const roleLabel = (user?.role || 'employee').toString();
-    const mainLocation = user?.location_name || 'Assigned location';
+    const initials = shownName
+        .trim()
+        .split(/\s+/)
+        .map((p: string) => p[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase();
 
-    const initials = (() => {
-        const base = displayName.trim();
-        if (!base) return 'ME';
-        const parts = base.split(/\s+/);
-        const letters = parts.map((p) => p[0]).join('');
-        return letters.slice(0, 2).toUpperCase();
-    })();
-
-    const onSubmit = async (data: Form) => {
+    // ── Save display name ─────────────────────────────────────────────────────
+    const handleSaveName = async () => {
+        if (!displayName.trim()) {
+            Alert.alert('Error', 'Display name cannot be empty.');
+            return;
+        }
+        setSavingName(true);
         try {
-            setApiError('');
-            setSuccess('');
-            await changePassword(data);
-            setSuccess('Password changed. You will be logged out.');
+            const { data } = await AuthAPI.updateProfile(displayName.trim());
+            // Update local auth context so header reflects change immediately
+            if (data?.user) {
+                setUser(prev => prev ? {
+                    ...prev,
+                    display_name: data.user.display_name,
+                } : prev);
+            }
+            setNameEditing(false);
+            Alert.alert('Updated ✓', 'Your display name has been updated.');
         } catch (e: any) {
-            const msg =
-                e?.response?.data?.error ||
-                e?.response?.data?.message ||
-                'Change failed. Please try again.';
-            setApiError(msg);
+            Alert.alert('Error', e?.response?.data?.error ?? 'Failed to update name.');
+        } finally {
+            setSavingName(false);
         }
     };
 
+    // ── Change password ───────────────────────────────────────────────────────
+    const handleChangePassword = async () => {
+        if (!currentPassword) {
+            Alert.alert('Error', 'Please enter your current password.');
+            return;
+        }
+        if (newPassword.length < 8) {
+            Alert.alert('Error', 'New password must be at least 8 characters.');
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            Alert.alert('Error', 'New passwords do not match.');
+            return;
+        }
+        if (currentPassword === newPassword) {
+            Alert.alert('Error', 'New password must be different from current password.');
+            return;
+        }
+
+        setSavingPassword(true);
+        try {
+            await AuthAPI.changePassword({
+                current_password: currentPassword,
+                new_password:     newPassword,
+                confirm_password: confirmPassword,
+            });
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+            Alert.alert(
+                'Password Changed ✓',
+                'Your password has been updated. Please log in again on other devices.',
+            );
+        } catch (e: any) {
+            Alert.alert('Error', e?.response?.data?.error ?? 'Failed to change password.');
+        } finally {
+            setSavingPassword(false);
+        }
+    };
+
+    // ── Logout ────────────────────────────────────────────────────────────────
+    const handleLogout = () => {
+        Alert.alert(
+            'Log out',
+            'Are you sure you want to log out?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Log out', style: 'destructive', onPress: logout },
+            ]
+        );
+    };
+
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={styles.safe}>
+
+            {/* Header */}
+            <View style={styles.header}>
+                <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={22} color={colors.text} />
+                </Pressable>
+                <Text style={styles.headerTitle}>Profile Settings</Text>
+                <View style={{ width: 36 }} />
+            </View>
+
             <ScrollView
-                style={styles.container}
-                contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+                style={styles.scroll}
+                contentContainerStyle={styles.content}
                 keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
             >
-                {/* Header / avatar */}
-                <View style={styles.headerRow}>
+                {/* ── Avatar + name ── */}
+                <View style={styles.avatarSection}>
                     <View style={styles.avatarCircle}>
                         <Text style={styles.avatarText}>{initials}</Text>
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.name}>{displayName}</Text>
-                        {!!email && <Text style={styles.email}>{email}</Text>}
+                    <Text style={styles.avatarName}>{shownName}</Text>
+                    <Text style={styles.avatarEmail}>{email}</Text>
+                    <View style={styles.rolePill}>
+                        <Ionicons name="shield-checkmark-outline" size={13} color={colors.primary} />
+                        <Text style={styles.rolePillText}>{roleName}</Text>
+                    </View>
+                </View>
 
-                        <View style={styles.roleRow}>
-                            <View style={styles.rolePill}>
-                                <Ionicons
-                                    name="shield-checkmark-outline"
-                                    size={14}
-                                    color={colors.buttonText}
-                                />
-                                <Text style={styles.rolePillText}>
-                                    {roleLabel.toUpperCase()}
-                                </Text>
+                {/* ── Account info ── */}
+                <View style={styles.card}>
+                    <Text style={styles.cardTitle}>Account Information</Text>
+
+                    <InfoRow icon="mail-outline"     label="Email"    value={email || '—'} />
+                    <InfoRow icon="shield-outline"   label="Role"     value={roleName} />
+                    <InfoRow icon="location-outline" label="Location" value={locationName} />
+                </View>
+
+                {/* ── Edit display name ── */}
+                <View style={styles.card}>
+                    <View style={styles.cardTitleRow}>
+                        <Text style={styles.cardTitle}>Display Name</Text>
+                        {!nameEditing && (
+                            <Pressable
+                                onPress={() => {
+                                    setDisplayName(user?.display_name ?? '');
+                                    setNameEditing(true);
+                                }}
+                                style={styles.editBtn}
+                            >
+                                <Ionicons name="pencil-outline" size={16} color={colors.primary} />
+                                <Text style={styles.editBtnText}>Edit</Text>
+                            </Pressable>
+                        )}
+                    </View>
+
+                    {nameEditing ? (
+                        <>
+                            <TextInput
+                                style={styles.input}
+                                value={displayName}
+                                onChangeText={setDisplayName}
+                                placeholder="e.g. John Doe"
+                                placeholderTextColor={colors.gray}
+                                autoFocus
+                                maxLength={60}
+                            />
+                            <Text style={styles.charCount}>{displayName.length}/60</Text>
+                            <View style={styles.btnRow}>
+                                <Pressable
+                                    style={styles.cancelBtn}
+                                    onPress={() => {
+                                        setDisplayName(user?.display_name ?? '');
+                                        setNameEditing(false);
+                                    }}
+                                >
+                                    <Text style={styles.cancelBtnText}>Cancel</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[styles.saveBtn, savingName && { opacity: 0.6 }]}
+                                    onPress={handleSaveName}
+                                    disabled={savingName}
+                                >
+                                    {savingName
+                                        ? <ActivityIndicator size="small" color="#fff" />
+                                        : <Text style={styles.saveBtnText}>Save</Text>
+                                    }
+                                </Pressable>
                             </View>
-                            <Text style={styles.locationText}>{mainLocation}</Text>
+                        </>
+                    ) : (
+                        <View style={styles.readonlyBox}>
+                            <Text style={styles.readonlyText}>
+                                {user?.display_name || 'Not set — tap Edit to add your name'}
+                            </Text>
                         </View>
-                    </View>
+                    )}
                 </View>
 
-                {/* Account details (read-only) */}
+                {/* ── Change password ── */}
                 <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Account details</Text>
+                    <Text style={styles.cardTitle}>Change Password</Text>
 
-                    <Text style={styles.label}>Name</Text>
-                    <View style={styles.readonlyBox}>
-                        <Text style={styles.readonlyText}>{displayName}</Text>
+                    <Text style={styles.fieldLabel}>Current password</Text>
+                    <View style={styles.passwordRow}>
+                        <TextInput
+                            style={[styles.input, { flex: 1 }]}
+                            value={currentPassword}
+                            onChangeText={setCurrentPassword}
+                            placeholder="••••••••"
+                            placeholderTextColor={colors.gray}
+                            secureTextEntry={!showCurrent}
+                            autoCapitalize="none"
+                        />
+                        <Pressable
+                            onPress={() => setShowCurrent(p => !p)}
+                            style={styles.eyeBtn}
+                        >
+                            <Ionicons
+                                name={showCurrent ? 'eye-off-outline' : 'eye-outline'}
+                                size={20}
+                                color={colors.gray}
+                            />
+                        </Pressable>
                     </View>
 
-                    <Text style={styles.label}>Email</Text>
-                    <View style={styles.readonlyBox}>
-                        <Text style={styles.readonlyText}>
-                            {email || 'No email on file'}
-                        </Text>
+                    <Text style={[styles.fieldLabel, { marginTop: 12 }]}>New password</Text>
+                    <View style={styles.passwordRow}>
+                        <TextInput
+                            style={[styles.input, { flex: 1 }]}
+                            value={newPassword}
+                            onChangeText={setNewPassword}
+                            placeholder="At least 8 characters"
+                            placeholderTextColor={colors.gray}
+                            secureTextEntry={!showNew}
+                            autoCapitalize="none"
+                        />
+                        <Pressable
+                            onPress={() => setShowNew(p => !p)}
+                            style={styles.eyeBtn}
+                        >
+                            <Ionicons
+                                name={showNew ? 'eye-off-outline' : 'eye-outline'}
+                                size={20}
+                                color={colors.gray}
+                            />
+                        </Pressable>
                     </View>
 
-                    <Text style={styles.label}>Role</Text>
-                    <View style={styles.readonlyBox}>
-                        <Text style={styles.readonlyText}>{roleLabel}</Text>
-                    </View>
-
-                    <Text style={styles.label}>Primary location</Text>
-                    <View style={styles.readonlyBox}>
-                        <Text style={styles.readonlyText}>{mainLocation}</Text>
-                    </View>
-                </View>
-
-                {/* Change password */}
-                <View style={styles.card}>
-                    <Text style={styles.sectionTitle}>Change password</Text>
-
-                    <Text style={styles.label}>Current password</Text>
-                    <TextInput
-                        secureTextEntry
-                        onChangeText={(v) => setValue('current_password', v)}
-                        style={[
-                            styles.input,
-                            errors.current_password && styles.inputError,
-                        ]}
-                        placeholder="••••••••"
-                        placeholderTextColor={colors.gray}
-                    />
-                    {errors.current_password && (
-                        <Text style={styles.errorText}>
-                            {errors.current_password.message}
-                        </Text>
+                    {/* Password strength */}
+                    {newPassword.length > 0 && (
+                        <PasswordStrength password={newPassword} />
                     )}
 
-                    <Text style={styles.label}>New password</Text>
-                    <TextInput
-                        secureTextEntry
-                        onChangeText={(v) => setValue('new_password', v)}
-                        style={[
-                            styles.input,
-                            errors.new_password && styles.inputError,
-                        ]}
-                        placeholder="At least 8 characters"
-                        placeholderTextColor={colors.gray}
-                    />
-                    {errors.new_password && (
-                        <Text style={styles.errorText}>
-                            {errors.new_password.message}
-                        </Text>
-                    )}
+                    <Text style={[styles.fieldLabel, { marginTop: 12 }]}>Confirm new password</Text>
+                    <View style={styles.passwordRow}>
+                        <TextInput
+                            style={[
+                                styles.input,
+                                { flex: 1 },
+                                confirmPassword.length > 0 && confirmPassword !== newPassword
+                                    && { borderColor: colors.error },
+                            ]}
+                            value={confirmPassword}
+                            onChangeText={setConfirmPassword}
+                            placeholder="Repeat new password"
+                            placeholderTextColor={colors.gray}
+                            secureTextEntry={!showConfirm}
+                            autoCapitalize="none"
+                        />
+                        <Pressable
+                            onPress={() => setShowConfirm(p => !p)}
+                            style={styles.eyeBtn}
+                        >
+                            <Ionicons
+                                name={showConfirm ? 'eye-off-outline' : 'eye-outline'}
+                                size={20}
+                                color={colors.gray}
+                            />
+                        </Pressable>
+                    </View>
 
-                    <Text style={styles.label}>Confirm new password</Text>
-                    <TextInput
-                        secureTextEntry
-                        onChangeText={(v) => setValue('confirm_password', v)}
-                        style={[
-                            styles.input,
-                            errors.confirm_password && styles.inputError,
-                        ]}
-                        placeholder="Repeat new password"
-                        placeholderTextColor={colors.gray}
-                    />
-                    {errors.confirm_password && (
-                        <Text style={styles.errorText}>
-                            {errors.confirm_password.message}
-                        </Text>
+                    {confirmPassword.length > 0 && confirmPassword !== newPassword && (
+                        <Text style={styles.errorText}>Passwords do not match</Text>
                     )}
-
-                    {success ? (
-                        <Text style={styles.successText}>{success}</Text>
-                    ) : null}
-                    {apiError ? (
-                        <Text style={styles.errorText}>{apiError}</Text>
-                    ) : null}
 
                     <Pressable
-                        onPress={handleSubmit(onSubmit)}
-                        disabled={isSubmitting}
-                        style={({ pressed }) => [
-                            styles.primaryButton,
-                            isSubmitting && { opacity: 0.7 },
-                            pressed && !isSubmitting && { opacity: 0.9 },
-                        ]}
+                        style={[styles.primaryBtn, savingPassword && { opacity: 0.6 }]}
+                        onPress={handleChangePassword}
+                        disabled={savingPassword}
                     >
-                        {isSubmitting ? (
-                            <ActivityIndicator color={colors.buttonText} />
-                        ) : (
-                            <Text style={styles.primaryButtonText}>
-                                Change password
-                            </Text>
-                        )}
+                        {savingPassword
+                            ? <ActivityIndicator color="#fff" />
+                            : <Text style={styles.primaryBtnText}>Update Password</Text>
+                        }
                     </Pressable>
                 </View>
 
-                {/* Logout */}
-                <Pressable
-                    onPress={logout}
-                    style={({ pressed }) => [
-                        styles.logoutButton,
-                        pressed && { opacity: 0.9 },
-                    ]}
-                >
-                    <Ionicons
-                        name="log-out-outline"
-                        size={18}
-                        color={colors.primary}
-                        style={{ marginRight: 6 }}
-                    />
-                    <Text style={styles.logoutText}>Log out</Text>
-                </Pressable>
+                {/* ── Danger zone ── */}
+                <View style={styles.dangerCard}>
+                    <Pressable style={styles.logoutRow} onPress={handleLogout}>
+                        <View style={styles.logoutIconWrap}>
+                            <Ionicons name="log-out-outline" size={20} color={colors.error} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={styles.logoutTitle}>Log out</Text>
+                            <Text style={styles.logoutSubtitle}>
+                                You'll need to sign in again
+                            </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.gray} />
+                    </Pressable>
+                </View>
+
+                <View style={{ height: 40 }} />
             </ScrollView>
         </SafeAreaView>
     );
 }
 
-const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: colors.background },
-    container: { flex: 1 },
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-    headerRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 16,
+function InfoRow({
+    icon,
+    label,
+    value,
+}: {
+    icon:  React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    value: string;
+}) {
+    return (
+        <View style={infoStyles.row}>
+            <View style={infoStyles.iconWrap}>
+                <Ionicons name={icon} size={18} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+                <Text style={infoStyles.label}>{label}</Text>
+                <Text style={infoStyles.value}>{value}</Text>
+            </View>
+        </View>
+    );
+}
+
+function PasswordStrength({ password }: { password: string }) {
+    let score = 0;
+    if (password.length >= 8)         score++;
+    if (/[A-Z]/.test(password))       score++;
+    if (/[0-9]/.test(password))       score++;
+    if (/[^A-Za-z0-9]/.test(password)) score++;
+
+    const labels = ['Weak', 'Fair', 'Good', 'Strong'];
+    const colors_ = [colors.error, colors.warning, colors.info, colors.success];
+
+    return (
+        <View style={pwStyles.wrap}>
+            <View style={pwStyles.bars}>
+                {[0, 1, 2, 3].map(i => (
+                    <View
+                        key={i}
+                        style={[
+                            pwStyles.bar,
+                            { backgroundColor: i < score ? colors_[score - 1] : '#E5E7EB' },
+                        ]}
+                    />
+                ))}
+            </View>
+            <Text style={[pwStyles.label, { color: colors_[score - 1] ?? colors.gray }]}>
+                {labels[score - 1] ?? ''}
+            </Text>
+        </View>
+    );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
+const styles = StyleSheet.create({
+    safe:    { flex: 1, backgroundColor: '#F8F8FC' },
+    scroll:  { flex: 1 },
+    content: { padding: 16 },
+
+    header: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        paddingHorizontal: 16,
+        paddingVertical:   12,
+        backgroundColor:   '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+    backBtn:     { padding: 4, marginRight: 8 },
+    headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text, textAlign: 'center' },
+
+    avatarSection: {
+        alignItems:    'center',
+        paddingVertical: 24,
+        gap:           6,
+        marginBottom:  8,
     },
     avatarCircle: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
-        backgroundColor: '#E5DEFF',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    avatarText: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: colors.primary,
-    },
-    name: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: colors.text,
-    },
-    email: {
-        fontSize: 13,
-        color: colors.gray,
-        marginTop: 2,
-    },
-    roleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 6,
-        gap: 8,
-    },
-    rolePill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 999,
+        width:           80,
+        height:          80,
+        borderRadius:    40,
         backgroundColor: colors.primary,
+        alignItems:      'center',
+        justifyContent:  'center',
+        marginBottom:    8,
+        shadowColor:     colors.primary,
+        shadowOpacity:   0.3,
+        shadowRadius:    8,
+        elevation:       4,
     },
-    rolePillText: {
-        color: colors.buttonText,
-        fontSize: 11,
-        fontWeight: '700',
-        textTransform: 'uppercase',
+    avatarText:  { fontSize: 28, fontWeight: '800', color: '#fff' },
+    avatarName:  { fontSize: 20, fontWeight: '800', color: colors.text },
+    avatarEmail: { fontSize: 13, color: colors.gray },
+    rolePill: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               4,
+        paddingHorizontal: 12,
+        paddingVertical:    4,
+        borderRadius:      999,
+        backgroundColor:   colors.subtleAccent,
+        borderWidth:       1,
+        borderColor:       colors.primary + '30',
     },
-    locationText: {
-        fontSize: 12,
-        color: colors.gray,
-    },
+    rolePillText: { fontSize: 12, color: colors.primary, fontWeight: '700' },
 
     card: {
-        backgroundColor: colors.background,
-        borderRadius: 14,
-        padding: 14,
-        borderWidth: 1,
-        borderColor: '#00000010',
-        marginBottom: 16,
+        backgroundColor: '#fff',
+        borderRadius:    16,
+        padding:         16,
+        marginBottom:    12,
+        borderWidth:     1,
+        borderColor:     '#EFEFEF',
+        shadowColor:     '#000',
+        shadowOpacity:   0.03,
+        shadowRadius:    4,
+        elevation:       1,
     },
-    sectionTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: colors.text,
-        marginBottom: 8,
+    cardTitle: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 12 },
+    cardTitleRow: {
+        flexDirection:  'row',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        marginBottom:   12,
     },
-
-    label: {
-        fontSize: 13,
-        color: colors.text,
-        marginBottom: 4,
-        marginTop: 6,
-    },
-    readonlyBox: {
-        borderWidth: 1,
-        borderColor: colors.inputBorder,
-        borderRadius: 10,
+    editBtn: {
+        flexDirection: 'row',
+        alignItems:    'center',
+        gap:           4,
         paddingHorizontal: 10,
-        paddingVertical: 8,
-        backgroundColor: '#F9FAFB',
+        paddingVertical:    5,
+        borderRadius:  999,
+        backgroundColor: colors.subtleAccent,
     },
-    readonlyText: {
-        fontSize: 14,
-        color: colors.text,
+    editBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+
+    readonlyBox: {
+        borderWidth:       1,
+        borderColor:       '#EFEFEF',
+        borderRadius:      10,
+        paddingHorizontal: 12,
+        paddingVertical:   10,
+        backgroundColor:   '#FAFAFA',
     },
+    readonlyText: { fontSize: 14, color: colors.text },
+
+    fieldLabel: { fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: 6 },
 
     input: {
-        borderWidth: 1,
-        borderColor: colors.inputBorder,
-        borderRadius: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
-        fontSize: 14,
-        color: colors.text,
-    },
-    inputError: {
-        borderColor: '#f97373',
-    },
-    errorText: {
-        marginTop: 2,
-        fontSize: 12,
-        color: '#f97373',
-    },
-    successText: {
-        marginTop: 8,
-        fontSize: 12,
-        color: '#16a34a',
-    },
-
-    primaryButton: {
-        marginTop: 14,
-        borderRadius: 999,
-        backgroundColor: colors.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-    },
-    primaryButtonText: {
-        color: colors.buttonText,
-        fontWeight: '700',
-        fontSize: 15,
-    },
-
-    logoutButton: {
-        marginTop: 4,
-        alignSelf: 'center',
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 10,
+        borderWidth:       1,
+        borderColor:       colors.inputBorder,
+        borderRadius:      10,
         paddingHorizontal: 12,
+        paddingVertical:   10,
+        fontSize:          14,
+        color:             colors.text,
+        backgroundColor:   '#FAFAFA',
     },
-    logoutText: {
-        color: colors.primary,
-        fontWeight: '600',
-        fontSize: 13,
+    charCount: { fontSize: 11, color: colors.gray, textAlign: 'right', marginTop: 4 },
+
+    passwordRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    eyeBtn:      { padding: 8 },
+
+    errorText: { fontSize: 12, color: colors.error, marginTop: 4 },
+
+    btnRow: {
+        flexDirection: 'row',
+        gap:           10,
+        marginTop:     12,
     },
+    cancelBtn: {
+        flex:          1,
+        paddingVertical: 10,
+        borderRadius:  999,
+        borderWidth:   1,
+        borderColor:   colors.inputBorder,
+        alignItems:    'center',
+    },
+    cancelBtnText: { fontSize: 14, fontWeight: '600', color: colors.text },
+    saveBtn: {
+        flex:            1,
+        paddingVertical: 10,
+        borderRadius:    999,
+        backgroundColor: colors.primary,
+        alignItems:      'center',
+    },
+    saveBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+
+    primaryBtn: {
+        marginTop:       16,
+        paddingVertical: 13,
+        borderRadius:    999,
+        backgroundColor: colors.primary,
+        alignItems:      'center',
+        shadowColor:     colors.primary,
+        shadowOpacity:   0.2,
+        shadowRadius:    6,
+        elevation:       3,
+    },
+    primaryBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+    dangerCard: {
+        backgroundColor: '#fff',
+        borderRadius:    16,
+        marginBottom:    12,
+        borderWidth:     1,
+        borderColor:     '#EFEFEF',
+        overflow:        'hidden',
+    },
+    logoutRow: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        paddingHorizontal: 16,
+        paddingVertical:   14,
+        gap:               12,
+    },
+    logoutIconWrap: {
+        width:          40,
+        height:         40,
+        borderRadius:   20,
+        backgroundColor: colors.error + '12',
+        alignItems:     'center',
+        justifyContent: 'center',
+    },
+    logoutTitle:    { fontSize: 15, fontWeight: '600', color: colors.error },
+    logoutSubtitle: { fontSize: 12, color: colors.gray, marginTop: 1 },
+});
+
+const infoStyles = StyleSheet.create({
+    row: {
+        flexDirection:  'row',
+        alignItems:     'center',
+        gap:            12,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F5F5F5',
+    },
+    iconWrap: {
+        width:          36,
+        height:         36,
+        borderRadius:   18,
+        backgroundColor: colors.subtleAccent,
+        alignItems:     'center',
+        justifyContent: 'center',
+    },
+    label: { fontSize: 11, color: colors.gray, marginBottom: 1 },
+    value: { fontSize: 14, fontWeight: '600', color: colors.text },
+});
+
+const pwStyles = StyleSheet.create({
+    wrap:  { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+    bars:  { flex: 1, flexDirection: 'row', gap: 4 },
+    bar:   { flex: 1, height: 4, borderRadius: 2 },
+    label: { fontSize: 12, fontWeight: '700', minWidth: 40 },
 });

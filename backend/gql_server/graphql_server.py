@@ -23,6 +23,7 @@ from .resolvers import (
     role_object,
     location_object,
     company_object,
+    shift_object,
 )
 
 
@@ -87,6 +88,7 @@ def create_schema():
         role_object,          # ✅ ADDED
         location_object,      # ✅ ADDED
         company_object,       # ✅ ADDED
+        shift_object,
         datetime_scalar,
         snake_case_fallback_resolvers,
     )

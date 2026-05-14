@@ -54,6 +54,9 @@ export const AuthAPI = {
     logout: () =>
         api.post('/auth/logout'),
 
+    updateProfile: (display_name: string) =>
+        api.patch('/auth/profile', { display_name }),
+    
     changePassword: (body: {
         current_password: string;
         new_password: string;

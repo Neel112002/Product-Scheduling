@@ -1,5 +1,4 @@
 // src/navigation/AppStack.tsx
-
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -9,14 +8,27 @@ import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
 import TeamRolesScreen from '../screens/admin/TeamRolesScreen';
 import CompleteProfileScreen from '../screens/CompleteProfileScreen';
+import ScheduleScreen from '../screens/admin/ScheduleScreen';
+import CreateShiftScreen from '../screens/admin/CreateShiftScreen';
+import ShiftDetailScreen from '../screens/admin/ShiftDetailScreen';
+import NotificationsScreen from '../screens/NotificationsScreen';
+import SwapShiftScreen from '../screens/SwapShiftScreen';
+import MySwapsScreen from '../screens/MySwapsScreen';
 
 export type AppStackParamList = {
     Dashboard: undefined;
     AdminDashboard: undefined;
     ProfileSettings: undefined;
     InviteStaff: undefined;
-    TeamRoles: undefined;        // ✅ Added
+    TeamRoles: undefined;
     CompleteProfile: undefined;
+    Notifications: undefined;
+    SwapShift: undefined;
+    MySwaps: undefined;
+    // ── Schedule ──────────────────────────────
+    Schedule: { locationId?: number | null };
+    CreateShift: { locationId: number; date: string };
+    ShiftDetail: { shiftId: number; locationId: number };
 };
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -33,20 +45,61 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                 headerTintColor: '#7B4AE2',
                 headerTitleAlign: 'center',
                 headerShadowVisible: false,
+                animation: 'slide_from_right',
             }}
         >
+            {/* ── Employee ────────────────────────────────────── */}
             <Stack.Screen
                 name="Dashboard"
                 component={HomeScreen}
                 options={{ headerShown: false }}
             />
 
+            {/* ── Admin ───────────────────────────────────────── */}
             <Stack.Screen
                 name="AdminDashboard"
                 component={AdminDashboardScreen}
-                options={{ title: 'Admin Dashboard' }}
+                options={{ headerShown: false }}
             />
 
+            <Stack.Screen
+                name="Schedule"
+                component={ScheduleScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="CreateShift"
+                component={CreateShiftScreen}
+                options={{
+                    headerShown: false,
+                    presentation: 'modal',
+                    animation: 'slide_from_bottom',
+                }}
+            />
+
+            <Stack.Screen
+                name="ShiftDetail"
+                component={ShiftDetailScreen}
+                options={{
+                    headerShown: false,
+                    animation: 'slide_from_right',
+                }}
+            />
+
+            <Stack.Screen
+                name="InviteStaff"
+                component={InviteStaffScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="TeamRoles"
+                component={TeamRolesScreen}
+                options={{ title: 'Team & Roles' }}
+            />
+
+            {/* ── Shared ──────────────────────────────────────── */}
             <Stack.Screen
                 name="ProfileSettings"
                 component={ProfileSettingsScreen}
@@ -54,25 +107,26 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             />
 
             <Stack.Screen
-                name="InviteStaff"
-                component={InviteStaffScreen}
-                options={{
-                    title: 'Invite Staff',
-                    headerShown: false,
-                }}
-            />
-
-            {/* ✅ NEW SCREEN */}
-            <Stack.Screen
-                name="TeamRoles"
-                component={TeamRolesScreen}
-                options={{ title: 'Team & Roles' }}
-            />
-
-            <Stack.Screen
                 name="CompleteProfile"
                 component={CompleteProfileScreen}
                 options={{ title: 'Complete your profile' }}
+            />
+
+            <Stack.Screen
+                name="Notifications"
+                component={NotificationsScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="SwapShift"
+                component={SwapShiftScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="MySwaps"
+                component={MySwapsScreen}
+                options={{ headerShown: false }}
             />
         </Stack.Navigator>
     );
