@@ -49,7 +49,6 @@ type AuthPayload {
 }
 
 type InviteResult {
-  userId: Int!
   inviteId: Int!
   email: String!
 }
@@ -60,7 +59,6 @@ type Query {
   shiftsByLocation(locationId: Int!): [Shift!]!
   teamMembers(locationId: Int!): [User!]!
 
-  # 🔥 RBAC
   locationRoles(locationId: Int!): [Role!]!
 }
 
@@ -70,4 +68,10 @@ type Mutation {
   createRole(locationId: Int!, name: String!): Role!
   deleteRole(roleId: Int!): Boolean!
   updateUserRole(empId: Int!, roleId: Int!): User!
+
+  sendOnboardingInvite(
+    email: String!
+    locationId: Int!
+    position: String
+  ): InviteResult!
 }

@@ -1,19 +1,11 @@
 // src/graphql/client.ts
-import {
-    ApolloClient,
-    InMemoryCache,
-    createHttpLink,
-} from '@apollo/client';
+import { ApolloClient, InMemoryCache, createHttpLink } from '@apollo/client';
 import { setContext } from '@apollo/client/link/context';
-import { API_BASE_URL } from '../config/env';
+import { GRAPHQL_URL } from '../config/env';
 import { getAccessToken } from '../utils/secureStore';
 
-// HTTP link to your Flask /graphql endpoint
-const httpLink = createHttpLink({
-    uri: `${API_BASE_URL}/graphql`,
-});
+const httpLink = createHttpLink({ uri: GRAPHQL_URL });
 
-// Attach JWT from secure storage to every request
 const authLink = setContext(async (_, { headers }) => {
     const token = await getAccessToken();
     return {
@@ -27,4 +19,9 @@ const authLink = setContext(async (_, { headers }) => {
 export const apolloClient = new ApolloClient({
     link: authLink.concat(httpLink),
     cache: new InMemoryCache(),
+    defaultOptions: {
+        query: {
+            errorPolicy: 'all',
+        },
+    },
 });

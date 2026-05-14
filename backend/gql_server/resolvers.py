@@ -5,10 +5,12 @@ from graphql import GraphQLError
 from flask_jwt_extended import create_access_token, create_refresh_token
 
 from extensions import db
-from models import AppUser, Location, Employment, Role, Company
+from models import AppUser, Location, Employment, Role, Company, OnboardingInvite
 from services.auth_service import AuthService
 from services.team_service import TeamService
 from services.rbac_service import can_modify_role
+
+from datetime import date
 
 
 query = QueryType()
@@ -22,6 +24,7 @@ company_object = ObjectType("Company")
 
 auth_service = AuthService()
 team_service = TeamService()
+
 
 # =====================================================
 # Helpers
@@ -341,3 +344,72 @@ def resolve_update_user_role(_, info, empId: int, roleId: int):
     db.session.commit()
 
     return target_emp.user
+
+
+@mutation.field("sendOnboardingInvite")
+def resolve_send_onboarding_invite(_, info, email: str, locationId: int, position: Optional[str] = None):
+
+    user = require_user(info)
+
+    email = email.strip().lower()
+
+    emp = Employment.query.filter_by(
+        user_id=user.user_id,
+        location_id=locationId,
+        status="active"
+    ).first()
+
+    if not emp:
+        raise GraphQLError("Forbidden")
+
+    role_name = emp.role.name.lower()
+
+    if role_name not in ["owner", "manager"]:
+        raise GraphQLError("Only owner or manager can invite staff")
+
+    existing = OnboardingInvite.query.filter_by(
+        email=email,
+        location_id=locationId,
+        status="pending"
+    ).first()
+
+    if existing:
+        raise GraphQLError("Invite already exists")
+
+    role = None
+
+    if position:
+        role = Role.query.filter_by(
+            location_id=locationId,
+            name=position.strip()
+        ).first()
+
+        if not role:
+            raise GraphQLError("Role not found")
+
+    invite = OnboardingInvite(
+        comp_id=emp.comp_id,
+        location_id=locationId,
+        email=email,
+        status="pending"
+    )
+
+    db.session.add(invite)
+    db.session.flush()
+
+    pending_emp = Employment(
+        user_id=None,
+        comp_id=emp.comp_id,
+        location_id=locationId,
+        role_id=role.role_id if role else emp.role_id,
+        status="pending",
+        start_date=date.today()
+    )
+
+    db.session.add(pending_emp)
+    db.session.commit()
+
+    return {
+        "inviteId": invite.form_id,
+        "email": invite.email
+    }

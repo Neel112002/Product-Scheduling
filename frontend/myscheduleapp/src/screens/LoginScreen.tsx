@@ -9,6 +9,7 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../context/AuthContext';
@@ -17,12 +18,12 @@ import { colors } from '../theme/colors';
 export default function LoginScreen({ navigation }: any) {
     const { login } = useContext(AuthContext);
 
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [submitting, setSubmitting] = useState(false);
+    const [email,       setEmail]       = useState('');
+    const [password,    setPassword]    = useState('');
+    const [submitting,  setSubmitting]  = useState(false);
 
     const handleLogin = async () => {
-        const trimmedEmail = email.trim();
+        const trimmedEmail = email.trim().toLowerCase();
 
         if (!trimmedEmail || !password) {
             Alert.alert('Missing info', 'Please enter both email and password.');
@@ -32,13 +33,17 @@ export default function LoginScreen({ navigation }: any) {
         setSubmitting(true);
         try {
             await login(trimmedEmail, password);
-            // No manual navigation needed: RootNavigator will switch to App stack
+            // RootNavigator automatically switches to App stack on success
         } catch (err: any) {
             console.error('[LoginScreen] login error:', err);
+
+            // Handle both REST and GraphQL error shapes
             const msg =
+                err?.response?.data?.error     ||
                 err?.graphQLErrors?.[0]?.message ||
-                err?.message ||
-                'Login failed. Please check your credentials and try again.';
+                err?.message                    ||
+                'Login failed. Please check your credentials.';
+
             Alert.alert('Login failed', msg);
         } finally {
             setSubmitting(false);
@@ -51,14 +56,22 @@ export default function LoginScreen({ navigation }: any) {
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
-                <View style={styles.container}>
+                <ScrollView
+                    contentContainerStyle={styles.container}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* Logo / Header */}
                     <View style={styles.header}>
+                        <View style={styles.logoCircle}>
+                            <Text style={styles.logoText}>S</Text>
+                        </View>
                         <Text style={styles.title}>Welcome back</Text>
                         <Text style={styles.subtitle}>
                             Sign in to manage your shifts and schedule.
                         </Text>
                     </View>
 
+                    {/* Form */}
                     <View style={styles.card}>
                         <Text style={styles.label}>Email</Text>
                         <TextInput
@@ -70,9 +83,10 @@ export default function LoginScreen({ navigation }: any) {
                             autoCapitalize="none"
                             autoCorrect={false}
                             placeholderTextColor={colors.gray}
+                            returnKeyType="next"
                         />
 
-                        <Text style={styles.label}>Password</Text>
+                        <Text style={[styles.label, { marginTop: 12 }]}>Password</Text>
                         <TextInput
                             style={styles.input}
                             value={password}
@@ -81,12 +95,12 @@ export default function LoginScreen({ navigation }: any) {
                             secureTextEntry
                             autoCapitalize="none"
                             placeholderTextColor={colors.gray}
+                            returnKeyType="done"
+                            onSubmitEditing={handleLogin}
                         />
 
                         <Pressable
-                            onPress={() =>
-                                navigation.navigate?.('ForgotPasswordRequest')
-                            }
+                            onPress={() => navigation.navigate('ForgotPasswordRequest')}
                             style={styles.forgotLink}
                         >
                             <Text style={styles.forgotText}>Forgot password?</Text>
@@ -97,8 +111,8 @@ export default function LoginScreen({ navigation }: any) {
                             disabled={submitting}
                             style={({ pressed }) => [
                                 styles.primaryButton,
-                                submitting && { opacity: 0.6 },
-                                pressed && !submitting && { opacity: 0.9 },
+                                submitting       && { opacity: 0.6 },
+                                pressed && !submitting && { opacity: 0.85 },
                             ]}
                         >
                             {submitting ? (
@@ -108,7 +122,31 @@ export default function LoginScreen({ navigation }: any) {
                             )}
                         </Pressable>
                     </View>
-                </View>
+
+                    {/* Divider */}
+                    <View style={styles.dividerRow}>
+                        <View style={styles.dividerLine} />
+                        <Text style={styles.dividerText}>or</Text>
+                        <View style={styles.dividerLine} />
+                    </View>
+
+                    {/* Sign up button */}
+                    <Pressable
+                        onPress={() => navigation.navigate('OwnerSignup')}
+                        style={({ pressed }) => [
+                            styles.secondaryButton,
+                            pressed && { opacity: 0.8 },
+                        ]}
+                    >
+                        <Text style={styles.secondaryButtonText}>
+                            Create an owner account
+                        </Text>
+                    </Pressable>
+
+                    <Text style={styles.staffNote}>
+                        Staff members are invited by their manager — no sign up needed.
+                    </Text>
+                </ScrollView>
             </KeyboardAvoidingView>
         </SafeAreaView>
     );
@@ -120,53 +158,80 @@ const styles = StyleSheet.create({
         backgroundColor: colors.background,
     },
     container: {
-        flex: 1,
-        paddingHorizontal: 20,
+        flexGrow: 1,
+        paddingHorizontal: 24,
         paddingTop: 40,
+        paddingBottom: 40,
     },
+
+    // Header
     header: {
+        alignItems: 'center',
         marginBottom: 32,
+    },
+    logoCircle: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: colors.primary,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+        shadowColor: colors.primary,
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    logoText: {
+        color: '#fff',
+        fontSize: 28,
+        fontWeight: '800',
     },
     title: {
         fontSize: 24,
         fontWeight: '800',
         color: colors.text,
+        marginBottom: 4,
     },
     subtitle: {
-        marginTop: 4,
         fontSize: 13,
         color: colors.gray,
+        textAlign: 'center',
     },
+
+    // Card
     card: {
         backgroundColor: colors.background,
         borderRadius: 16,
-        padding: 16,
+        padding: 20,
         borderWidth: 1,
         borderColor: '#00000010',
         shadowColor: '#000',
-        shadowOpacity: 0.04,
-        shadowRadius: 6,
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
         elevation: 2,
+        marginBottom: 24,
     },
     label: {
         fontSize: 13,
+        fontWeight: '600',
         color: colors.text,
-        marginBottom: 4,
-        marginTop: 8,
+        marginBottom: 6,
     },
     input: {
         borderWidth: 1,
         borderColor: colors.inputBorder,
         borderRadius: 10,
-        paddingHorizontal: 10,
-        paddingVertical: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
         fontSize: 14,
         color: colors.text,
+        backgroundColor: '#FAFAFA',
     },
     forgotLink: {
         alignSelf: 'flex-end',
-        marginTop: 8,
-        marginBottom: 16,
+        marginTop: 10,
+        marginBottom: 20,
     },
     forgotText: {
         fontSize: 12,
@@ -174,16 +239,60 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     primaryButton: {
-        marginTop: 4,
         borderRadius: 999,
         backgroundColor: colors.primary,
-        paddingVertical: 12,
+        paddingVertical: 14,
         alignItems: 'center',
         justifyContent: 'center',
+        shadowColor: colors.primary,
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+        elevation: 3,
     },
     primaryButtonText: {
         color: colors.buttonText,
         fontWeight: '700',
         fontSize: 15,
+    },
+
+    // Divider
+    dividerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: '#E5E7EB',
+    },
+    dividerText: {
+        marginHorizontal: 12,
+        fontSize: 12,
+        color: colors.gray,
+    },
+
+    // Secondary button
+    secondaryButton: {
+        borderRadius: 999,
+        borderWidth: 1.5,
+        borderColor: colors.primary,
+        paddingVertical: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    secondaryButtonText: {
+        color: colors.primary,
+        fontWeight: '700',
+        fontSize: 15,
+    },
+
+    staffNote: {
+        fontSize: 12,
+        color: colors.gray,
+        textAlign: 'center',
+        lineHeight: 18,
+        paddingHorizontal: 16,
     },
 });
