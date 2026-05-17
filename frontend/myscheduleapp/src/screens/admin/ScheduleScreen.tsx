@@ -17,11 +17,11 @@ import {
     RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme/colors';
-import { ShiftsAPI } from '../../api/api';
-import { AuthContext } from '../../context/AuthContext';
-import { useQuery } from '@apollo/client/react';
+import { Ionicons }     from '@expo/vector-icons';
+import { colors }       from '../../theme/colors';
+import { ShiftsAPI }    from '../../api/api';
+import { AuthContext }  from '../../context/AuthContext';
+import { useQuery }     from '@apollo/client/react';
 import { MY_LOCATIONS_QUERY } from '../../graphql/operations';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ type LaborCost = {
     hourly_rate:  number;
 };
 
-type Location = { id: number; name: string };
+type Location        = { id: number; name: string };
 type MyLocationsData = { myLocations: Location[] };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -55,8 +55,7 @@ type MyLocationsData = { myLocations: Location[] };
 function getWeekStart(date: Date): Date {
     const d   = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-    d.setDate(diff);
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
     d.setHours(0, 0, 0, 0);
     return d;
 }
@@ -68,11 +67,7 @@ function addDays(date: Date, days: number): Date {
 }
 
 function formatDate(date: Date): string {
-    return date.toISOString().split('T')[0]; // YYYY-MM-DD
-}
-
-function formatDayLabel(date: Date): string {
-    return date.toLocaleDateString('en-CA', { weekday: 'short', month: 'short', day: 'numeric' });
+    return date.toISOString().split('T')[0];
 }
 
 function formatDayShort(date: Date): string {
@@ -90,21 +85,18 @@ function formatTime(iso: string): string {
 
 function formatWeekRange(start: Date): string {
     const end = addDays(start, 6);
-    const s = start.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
-    const e = end.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+    const s   = start.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    const e   = end.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
     return `${s} – ${e}`;
 }
 
-function isSameDay(a: Date, b: Date): boolean {
-    return (
-        a.getFullYear() === b.getFullYear() &&
-        a.getMonth()    === b.getMonth()    &&
-        a.getDate()     === b.getDate()
-    );
-}
-
 function isToday(date: Date): boolean {
-    return isSameDay(date, new Date());
+    const today = new Date();
+    return (
+        date.getFullYear() === today.getFullYear() &&
+        date.getMonth()    === today.getMonth()    &&
+        date.getDate()     === today.getDate()
+    );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -112,12 +104,12 @@ function isToday(date: Date): boolean {
 export default function ScheduleScreen({ navigation }: any) {
     const { user } = useContext(AuthContext);
 
-    const [weekStart, setWeekStart]         = useState<Date>(() => getWeekStart(new Date()));
-    const [shifts, setShifts]               = useState<ShiftDetail[]>([]);
-    const [laborCost, setLaborCost]         = useState<LaborCost | null>(null);
-    const [loading, setLoading]             = useState(false);
-    const [refreshing, setRefreshing]       = useState(false);
-    const [publishing, setPublishing]       = useState(false);
+    const [weekStart,          setWeekStart]          = useState<Date>(() => getWeekStart(new Date()));
+    const [shifts,             setShifts]             = useState<ShiftDetail[]>([]);
+    const [laborCost,          setLaborCost]          = useState<LaborCost | null>(null);
+    const [loading,            setLoading]            = useState(false);
+    const [refreshing,         setRefreshing]         = useState(false);
+    const [publishing,         setPublishing]         = useState(false);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
     const [showLocationPicker, setShowLocationPicker] = useState(false);
 
@@ -140,24 +132,22 @@ export default function ScheduleScreen({ navigation }: any) {
     const fetchData = useCallback(async (loc: number, ws: Date) => {
         setLoading(true);
         try {
-            const weekStr = formatDate(ws);
+            const weekStr       = formatDate(ws);
             const [shiftsRes, costRes] = await Promise.all([
                 ShiftsAPI.list(loc, weekStr),
                 ShiftsAPI.laborCost(loc, weekStr),
             ]);
             setShifts(shiftsRes.data?.shifts ?? []);
             setLaborCost(costRes.data ?? null);
-        } catch (e) {
-            console.warn('[ScheduleScreen] fetch error:', e);
+        } catch {
+            // silent
         } finally {
             setLoading(false);
         }
     }, []);
 
     useEffect(() => {
-        if (selectedLocationId) {
-            fetchData(selectedLocationId, weekStart);
-        }
+        if (selectedLocationId) fetchData(selectedLocationId, weekStart);
     }, [selectedLocationId, weekStart, fetchData]);
 
     const onRefresh = useCallback(async () => {
@@ -173,9 +163,10 @@ export default function ScheduleScreen({ navigation }: any) {
     const goToday  = () => setWeekStart(getWeekStart(new Date()));
 
     // ── Week days ─────────────────────────────────────────────────────────────
-    const weekDays = useMemo(() => (
-        Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-    ), [weekStart]);
+    const weekDays = useMemo(
+        () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
+        [weekStart]
+    );
 
     // ── Shifts grouped by day ─────────────────────────────────────────────────
     const shiftsByDay = useMemo(() => {
@@ -191,7 +182,7 @@ export default function ScheduleScreen({ navigation }: any) {
     // ── Draft count ───────────────────────────────────────────────────────────
     const draftCount = useMemo(
         () => shifts.filter(s => s.status === 'draft').length,
-        [shifts],
+        [shifts]
     );
 
     // ── Publish ───────────────────────────────────────────────────────────────
@@ -204,7 +195,6 @@ export default function ScheduleScreen({ navigation }: any) {
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Publish',
-                    style: 'default',
                     onPress: async () => {
                         setPublishing(true);
                         try {
@@ -222,17 +212,16 @@ export default function ScheduleScreen({ navigation }: any) {
         );
     };
 
-    // ── Selected location name ────────────────────────────────────────────────
     const locationName = useMemo(
         () => locations.find(l => l.id === selectedLocationId)?.name ?? 'Select location',
-        [locations, selectedLocationId],
+        [locations, selectedLocationId]
     );
 
     // ── Render ────────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={styles.safe}>
 
-            {/* ── Top bar ── */}
+            {/* Top bar */}
             <View style={styles.topBar}>
                 <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={22} color={colors.text} />
@@ -243,16 +232,16 @@ export default function ScheduleScreen({ navigation }: any) {
                 </Pressable>
             </View>
 
-            {/* ── Location picker ── */}
+            {/* Location picker */}
             <Pressable
                 style={styles.locationBar}
                 onPress={() => setShowLocationPicker(p => !p)}
             >
-                <Ionicons name="location-outline" size={16} color={colors.primary} />
+                <Ionicons name="location-outline" size={15} color={colors.primary} />
                 <Text style={styles.locationName}>{locationName}</Text>
                 <Ionicons
                     name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
-                    size={16}
+                    size={15}
                     color={colors.gray}
                 />
             </Pressable>
@@ -285,49 +274,39 @@ export default function ScheduleScreen({ navigation }: any) {
                 </View>
             )}
 
-            {/* ── Week navigation ── */}
+            {/* Week navigation */}
             <View style={styles.weekNav}>
                 <Pressable onPress={prevWeek} style={styles.weekNavBtn}>
-                    <Ionicons name="chevron-back" size={22} color={colors.text} />
+                    <Ionicons name="chevron-back" size={20} color={colors.text} />
                 </Pressable>
                 <Text style={styles.weekLabel}>{formatWeekRange(weekStart)}</Text>
                 <Pressable onPress={nextWeek} style={styles.weekNavBtn}>
-                    <Ionicons name="chevron-forward" size={22} color={colors.text} />
+                    <Ionicons name="chevron-forward" size={20} color={colors.text} />
                 </Pressable>
             </View>
 
-            {/* ── Labor cost banner ── */}
+            {/* Labor cost banner */}
             {laborCost && laborCost.total_shifts > 0 && (
                 <View style={styles.laborBanner}>
-                    <View style={styles.laborItem}>
-                        <Text style={styles.laborValue}>{laborCost.total_shifts}</Text>
-                        <Text style={styles.laborLabel}>shifts</Text>
-                    </View>
+                    <LaborItem value={String(laborCost.total_shifts)} label="shifts" />
                     <View style={styles.laborDivider} />
-                    <View style={styles.laborItem}>
-                        <Text style={styles.laborValue}>{laborCost.total_hours}h</Text>
-                        <Text style={styles.laborLabel}>hours</Text>
-                    </View>
+                    <LaborItem value={`${laborCost.total_hours}h`} label="hours" />
                     <View style={styles.laborDivider} />
-                    <View style={styles.laborItem}>
-                        <Text style={styles.laborValue}>${laborCost.total_cost}</Text>
-                        <Text style={styles.laborLabel}>est. cost</Text>
-                    </View>
+                    <LaborItem value={`$${laborCost.total_cost}`} label="est. cost" />
                     {draftCount > 0 && (
                         <>
                             <View style={styles.laborDivider} />
-                            <View style={styles.laborItem}>
-                                <Text style={[styles.laborValue, { color: colors.warning }]}>
-                                    {draftCount}
-                                </Text>
-                                <Text style={styles.laborLabel}>drafts</Text>
-                            </View>
+                            <LaborItem
+                                value={String(draftCount)}
+                                label="drafts"
+                                valueColor={colors.warning}
+                            />
                         </>
                     )}
                 </View>
             )}
 
-            {/* ── Day columns ── */}
+            {/* Day list */}
             {loading && !refreshing ? (
                 <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={colors.primary} />
@@ -345,6 +324,7 @@ export default function ScheduleScreen({ navigation }: any) {
                         const key       = formatDate(day);
                         const dayShifts = shiftsByDay.get(key) ?? [];
                         const today     = isToday(day);
+                        const hasShifts = dayShifts.length > 0;
 
                         return (
                             <View key={key} style={styles.dayBlock}>
@@ -354,26 +334,21 @@ export default function ScheduleScreen({ navigation }: any) {
                                         styles.dayBadge,
                                         today && styles.dayBadgeToday,
                                     ]}>
-                                        <Text style={[
-                                            styles.dayShort,
-                                            today && styles.dayShortToday,
-                                        ]}>
+                                        <Text style={[styles.dayShort, today && styles.dayShortToday]}>
                                             {formatDayShort(day)}
                                         </Text>
-                                        <Text style={[
-                                            styles.dayNum,
-                                            today && styles.dayNumToday,
-                                        ]}>
+                                        <Text style={[styles.dayNum, today && styles.dayNumToday]}>
                                             {formatDayNum(day)}
                                         </Text>
                                     </View>
+
                                     <Text style={styles.shiftCount}>
-                                        {dayShifts.length > 0
+                                        {hasShifts
                                             ? `${dayShifts.length} shift${dayShifts.length > 1 ? 's' : ''}`
                                             : 'No shifts'}
                                     </Text>
 
-                                    {/* Add shift button */}
+                                    {/* Single + button — only add option */}
                                     <Pressable
                                         style={styles.addShiftBtn}
                                         onPress={() => navigation.navigate('CreateShift', {
@@ -385,37 +360,24 @@ export default function ScheduleScreen({ navigation }: any) {
                                     </Pressable>
                                 </View>
 
-                                {/* Shift cards */}
-                                {dayShifts.length > 0 ? (
-                                    dayShifts.map(shift => (
-                                        <ShiftCard
-                                            key={shift.shift_id}
-                                            shift={shift}
-                                            onPress={() => navigation.navigate('ShiftDetail', {
-                                                shiftId:    shift.shift_id,
-                                                locationId: selectedLocationId,
-                                            })}
-                                        />
-                                    ))
-                                ) : (
-                                    <Pressable
-                                        style={styles.emptyDay}
-                                        onPress={() => navigation.navigate('CreateShift', {
+                                {/* Shift cards — nothing shown for empty days (no redundant button) */}
+                                {dayShifts.map(shift => (
+                                    <ShiftCard
+                                        key={shift.shift_id}
+                                        shift={shift}
+                                        onPress={() => navigation.navigate('ShiftDetail', {
+                                            shiftId:    shift.shift_id,
                                             locationId: selectedLocationId,
-                                            date:       key,
                                         })}
-                                    >
-                                        <Ionicons name="add-circle-outline" size={18} color={colors.gray} />
-                                        <Text style={styles.emptyDayText}>Add a shift</Text>
-                                    </Pressable>
-                                )}
+                                    />
+                                ))}
                             </View>
                         );
                     })}
                 </ScrollView>
             )}
 
-            {/* ── Bottom action bar ── */}
+            {/* Bottom action bar */}
             <View style={styles.bottomBar}>
                 <Pressable
                     style={styles.createBtn}
@@ -424,7 +386,7 @@ export default function ScheduleScreen({ navigation }: any) {
                         date:       formatDate(new Date()),
                     })}
                 >
-                    <Ionicons name="add" size={20} color={colors.primary} />
+                    <Ionicons name="add" size={18} color={colors.primary} />
                     <Text style={styles.createBtnText}>Create Shift</Text>
                 </Pressable>
 
@@ -438,7 +400,7 @@ export default function ScheduleScreen({ navigation }: any) {
                             <ActivityIndicator size="small" color="#fff" />
                         ) : (
                             <>
-                                <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                                <Ionicons name="checkmark-circle" size={16} color="#fff" />
                                 <Text style={styles.publishBtnText}>
                                     Publish {draftCount} Draft{draftCount > 1 ? 's' : ''}
                                 </Text>
@@ -451,18 +413,50 @@ export default function ScheduleScreen({ navigation }: any) {
     );
 }
 
-// ── ShiftCard component ───────────────────────────────────────────────────────
+// ── LaborItem sub-component ───────────────────────────────────────────────────
 
-function ShiftCard({ shift, onPress }: { shift: ShiftDetail; onPress: () => void }) {
+function LaborItem({
+    value,
+    label,
+    valueColor,
+}: {
+    value:       string;
+    label:       string;
+    valueColor?: string;
+}) {
+    return (
+        <View style={laborStyles.item}>
+            <Text style={[laborStyles.value, valueColor ? { color: valueColor } : {}]}>
+                {value}
+            </Text>
+            <Text style={laborStyles.label}>{label}</Text>
+        </View>
+    );
+}
+
+const laborStyles = StyleSheet.create({
+    item:  { alignItems: 'center' },
+    value: { fontSize: 15, fontWeight: '800', color: colors.text },
+    label: { fontSize: 11, color: colors.gray, marginTop: 1 },
+});
+
+// ── ShiftCard sub-component ───────────────────────────────────────────────────
+
+function ShiftCard({
+    shift,
+    onPress,
+}: {
+    shift:   ShiftDetail;
+    onPress: () => void;
+}) {
     const isDraft     = shift.status === 'draft';
     const isPublished = shift.status === 'published';
     const isCancelled = shift.status === 'cancelled';
 
-    const statusColor = isDraft
-        ? colors.warning
-        : isPublished
-        ? colors.success
-        : colors.gray;
+    const statusColor =
+        isDraft     ? colors.warning :
+        isPublished ? colors.success :
+        colors.gray;
 
     const statusLabel = isDraft ? 'DRAFT' : isPublished ? 'LIVE' : 'CANCELLED';
 
@@ -471,8 +465,8 @@ function ShiftCard({ shift, onPress }: { shift: ShiftDetail; onPress: () => void
             style={({ pressed }) => [
                 styles.shiftCard,
                 { borderLeftColor: statusColor },
-                pressed && { opacity: 0.85 },
-                isCancelled && { opacity: 0.5 },
+                pressed      && { opacity: 0.85 },
+                isCancelled  && { opacity: 0.5 },
             ]}
             onPress={onPress}
         >
@@ -482,7 +476,7 @@ function ShiftCard({ shift, onPress }: { shift: ShiftDetail; onPress: () => void
                 </Text>
                 <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
                     {shift.created_by_ai && (
-                        <Ionicons name="sparkles" size={11} color={statusColor} />
+                        <Ionicons name="sparkles" size={10} color={statusColor} />
                     )}
                     <Text style={[styles.statusText, { color: statusColor }]}>
                         {statusLabel}
@@ -493,19 +487,19 @@ function ShiftCard({ shift, onPress }: { shift: ShiftDetail; onPress: () => void
             <View style={styles.shiftCardBottom}>
                 {shift.role && (
                     <View style={styles.shiftMeta}>
-                        <Ionicons name="briefcase-outline" size={13} color={colors.gray} />
+                        <Ionicons name="briefcase-outline" size={12} color={colors.gray} />
                         <Text style={styles.shiftMetaText}>{shift.role}</Text>
                     </View>
                 )}
                 <View style={styles.shiftMeta}>
-                    <Ionicons name="people-outline" size={13} color={colors.gray} />
+                    <Ionicons name="people-outline" size={12} color={colors.gray} />
                     <Text style={styles.shiftMetaText}>
                         {shift.assignments.length} assigned
                     </Text>
                 </View>
                 {shift.break_minutes > 0 && (
                     <View style={styles.shiftMeta}>
-                        <Ionicons name="cafe-outline" size={13} color={colors.gray} />
+                        <Ionicons name="cafe-outline" size={12} color={colors.gray} />
                         <Text style={styles.shiftMetaText}>{shift.break_minutes}m break</Text>
                     </View>
                 )}
@@ -525,88 +519,93 @@ const styles = StyleSheet.create({
 
     // Top bar
     topBar: {
-        flexDirection:  'row',
-        alignItems:     'center',
+        flexDirection:     'row',
+        alignItems:        'center',
         paddingHorizontal: 16,
-        paddingVertical:   12,
+        paddingVertical:   10,
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
+        backgroundColor:   '#fff',
     },
     backBtn:      { padding: 4, marginRight: 8 },
     screenTitle:  { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
-    todayBtn:     { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, borderWidth: 1, borderColor: colors.primary },
+    todayBtn: {
+        paddingHorizontal: 12,
+        paddingVertical:    5,
+        borderRadius:      999,
+        borderWidth:       1,
+        borderColor:       colors.primary,
+    },
     todayBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
 
-    // Location
+    // Location bar
     locationBar: {
-        flexDirection:    'row',
-        alignItems:       'center',
-        gap:              6,
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               6,
         paddingHorizontal: 16,
-        paddingVertical:  10,
-        backgroundColor:  colors.subtleAccent,
+        paddingVertical:   8,
+        backgroundColor:   colors.subtleAccent,
         borderBottomWidth: 1,
         borderBottomColor: '#E8E8F0',
     },
     locationName: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
     locationDropdown: {
-        backgroundColor: '#fff',
+        backgroundColor:   '#fff',
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        elevation: 4,
-        shadowColor: '#000',
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
+        elevation:         4,
+        shadowColor:       '#000',
+        shadowOpacity:     0.06,
+        shadowRadius:      4,
     },
     locationOption: {
-        flexDirection:    'row',
-        alignItems:       'center',
-        justifyContent:   'space-between',
+        flexDirection:     'row',
+        alignItems:        'center',
+        justifyContent:    'space-between',
         paddingHorizontal: 20,
-        paddingVertical:  12,
+        paddingVertical:   11,
         borderBottomWidth: 1,
         borderBottomColor: '#F5F5F5',
     },
-    locationOptionActive: { backgroundColor: colors.subtleAccent },
-    locationOptionText:   { fontSize: 14, color: colors.text },
+    locationOptionActive:  { backgroundColor: colors.subtleAccent },
+    locationOptionText:    { fontSize: 14, color: colors.text },
 
     // Week nav
     weekNav: {
-        flexDirection:  'row',
-        alignItems:     'center',
-        justifyContent: 'space-between',
+        flexDirection:     'row',
+        alignItems:        'center',
+        justifyContent:    'space-between',
         paddingHorizontal: 8,
-        paddingVertical:   10,
+        paddingVertical:   8,
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
+        backgroundColor:   '#fff',
     },
-    weekNavBtn:  { padding: 8 },
-    weekLabel:   { fontSize: 14, fontWeight: '700', color: colors.text },
+    weekNavBtn: { padding: 8 },
+    weekLabel:  { fontSize: 13, fontWeight: '700', color: colors.text },
 
     // Labor banner
     laborBanner: {
-        flexDirection:  'row',
-        alignItems:     'center',
-        justifyContent: 'space-around',
-        backgroundColor: colors.subtleCard,
-        paddingVertical: 10,
+        flexDirection:     'row',
+        alignItems:        'center',
+        justifyContent:    'space-around',
+        backgroundColor:   colors.subtleCard,
+        paddingVertical:   8,
         borderBottomWidth: 1,
         borderBottomColor: '#EFEFEF',
     },
-    laborItem:    { alignItems: 'center' },
-    laborValue:   { fontSize: 15, fontWeight: '800', color: colors.text },
-    laborLabel:   { fontSize: 11, color: colors.gray, marginTop: 1 },
-    laborDivider: { width: 1, height: 28, backgroundColor: '#E0E0E0' },
+    laborDivider: { width: 1, height: 24, backgroundColor: '#E0E0E0' },
 
     // Scroll
     scroll:           { flex: 1 },
     loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
     loadingText:      { fontSize: 13, color: colors.gray },
 
-    // Day block
+    // Day block — compact: marginTop reduced, no emptyDay button
     dayBlock: {
         marginHorizontal: 16,
-        marginTop:        16,
+        marginTop:        10,   // ✅ reduced from 16 — more compact
         borderRadius:     12,
         overflow:         'hidden',
         borderWidth:      1,
@@ -614,135 +613,125 @@ const styles = StyleSheet.create({
         backgroundColor:  '#FAFAFA',
     },
     dayHeader: {
-        flexDirection:  'row',
-        alignItems:     'center',
+        flexDirection:     'row',
+        alignItems:        'center',
         paddingHorizontal: 12,
-        paddingVertical:   10,
+        paddingVertical:   8,
         backgroundColor:   '#fff',
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        gap: 8,
+        gap:               8,
     },
     dayBadge: {
         alignItems:      'center',
-        width:           40,
-        paddingVertical: 4,
+        width:           36,
+        paddingVertical: 3,
         borderRadius:    8,
         backgroundColor: '#F3F4F6',
     },
     dayBadgeToday:  { backgroundColor: colors.primary },
-    dayShort:       { fontSize: 10, fontWeight: '700', color: colors.gray },
+    dayShort:       { fontSize: 9,  fontWeight: '700', color: colors.gray  },
     dayShortToday:  { color: '#fff' },
-    dayNum:         { fontSize: 16, fontWeight: '800', color: colors.text },
+    dayNum:         { fontSize: 15, fontWeight: '800', color: colors.text  },
     dayNumToday:    { color: '#fff' },
     shiftCount:     { flex: 1, fontSize: 12, color: colors.gray },
-    addShiftBtn:    {
-        width:          32,
-        height:         32,
-        borderRadius:   16,
+    addShiftBtn: {
+        width:           30,
+        height:          30,
+        borderRadius:    15,
         backgroundColor: colors.subtleAccent,
-        alignItems:     'center',
-        justifyContent: 'center',
+        alignItems:      'center',
+        justifyContent:  'center',
     },
-
-    // Empty day
-    emptyDay: {
-        flexDirection:  'row',
-        alignItems:     'center',
-        justifyContent: 'center',
-        gap:            6,
-        paddingVertical: 16,
-    },
-    emptyDayText: { fontSize: 13, color: colors.gray },
 
     // Shift card
     shiftCard: {
-        margin:          10,
-        padding:         12,
+        margin:          8,
+        padding:         10,
         borderRadius:    10,
         backgroundColor: '#fff',
-        borderLeftWidth: 4,
+        borderLeftWidth: 3,
         borderLeftColor: colors.primary,
         shadowColor:     '#000',
-        shadowOpacity:   0.04,
-        shadowRadius:    4,
+        shadowOpacity:   0.03,
+        shadowRadius:    3,
         elevation:       1,
     },
     shiftCardTop: {
         flexDirection:  'row',
         alignItems:     'center',
         justifyContent: 'space-between',
-        marginBottom:   6,
+        marginBottom:   5,
     },
-    shiftTime:    { fontSize: 14, fontWeight: '700', color: colors.text },
-    statusBadge:  {
-        flexDirection:  'row',
-        alignItems:     'center',
-        gap:            4,
-        paddingHorizontal: 8,
-        paddingVertical:   3,
-        borderRadius:   999,
+    shiftTime:    { fontSize: 13, fontWeight: '700', color: colors.text },
+    statusBadge: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               3,
+        paddingHorizontal: 7,
+        paddingVertical:   2,
+        borderRadius:      999,
     },
-    statusText:  { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+    statusText:  { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
     shiftCardBottom: {
         flexDirection: 'row',
         flexWrap:      'wrap',
-        gap:           10,
+        gap:           8,
     },
     shiftMeta: {
         flexDirection: 'row',
         alignItems:    'center',
-        gap:           4,
+        gap:           3,
     },
-    shiftMetaText: { fontSize: 12, color: colors.gray },
-    shiftNotes:    {
-        marginTop:  6,
-        fontSize:   12,
-        color:      colors.gray,
-        fontStyle:  'italic',
+    shiftMetaText: { fontSize: 11, color: colors.gray },
+    shiftNotes: {
+        marginTop: 4,
+        fontSize:  11,
+        color:     colors.gray,
+        fontStyle: 'italic',
     },
 
     // Bottom bar
     bottomBar: {
-        position:        'absolute',
-        bottom:          0,
-        left:            0,
-        right:           0,
-        flexDirection:   'row',
-        gap:             10,
+        position:          'absolute',
+        bottom:            0,
+        left:              0,
+        right:             0,
+        flexDirection:     'row',
+        gap:               10,
         paddingHorizontal: 16,
-        paddingVertical:   12,
-        paddingBottom:   24,
-        backgroundColor: '#fff',
-        borderTopWidth:  1,
-        borderTopColor:  '#F0F0F0',
-        shadowColor:     '#000',
-        shadowOpacity:   0.06,
-        shadowRadius:    8,
-        elevation:       8,
+        paddingVertical:   10,
+        paddingBottom:     24,
+        backgroundColor:   '#fff',
+        borderTopWidth:    1,
+        borderTopColor:    '#F0F0F0',
+        shadowColor:       '#000',
+        shadowOpacity:     0.06,
+        shadowRadius:      8,
+        elevation:         8,
     },
     createBtn: {
-        flex:           1,
-        flexDirection:  'row',
-        alignItems:     'center',
-        justifyContent: 'center',
-        gap:            6,
-        paddingVertical: 12,
-        borderRadius:   999,
-        borderWidth:    1.5,
-        borderColor:    colors.primary,
+        flex:            1,
+        flexDirection:   'row',
+        alignItems:      'center',
+        justifyContent:  'center',
+        gap:             6,
+        paddingVertical: 11,
+        borderRadius:    999,
+        borderWidth:     1.5,
+        borderColor:     colors.primary,
         backgroundColor: '#fff',
     },
-    createBtnText: { fontSize: 14, fontWeight: '700', color: colors.primary },
+    createBtnText:  { fontSize: 13, fontWeight: '700', color: colors.primary },
     publishBtn: {
-        flex:           1,
-        flexDirection:  'row',
-        alignItems:     'center',
-        justifyContent: 'center',
-        gap:            6,
-        paddingVertical: 12,
-        borderRadius:   999,
+        flex:            1,
+        flexDirection:   'row',
+        alignItems:      'center',
+        justifyContent:  'center',
+        gap:             6,
+        paddingVertical: 11,
+        borderRadius:    999,
         backgroundColor: colors.success,
     },
-    publishBtnText: { fontSize: 14, fontWeight: '700', color: '#fff' },
+    publishBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
 });

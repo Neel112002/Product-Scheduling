@@ -1,17 +1,19 @@
 // src/screens/admin/AdminDashboardScreen.tsx
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     ScrollView,
     Pressable,
+    ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView }        from 'react-native-safe-area-context';
-import { Ionicons }            from '@expo/vector-icons';
-import { colors }              from '../../theme/colors';
-import { AuthContext }         from '../../context/AuthContext';
-import { useNotifications }    from '../../hooks/useNotifications';
+import { SafeAreaView }     from 'react-native-safe-area-context';
+import { Ionicons }         from '@expo/vector-icons';
+import { colors }           from '../../theme/colors';
+import { AuthContext }      from '../../context/AuthContext';
+import { useNotifications } from '../../hooks/useNotifications';
+import { ShiftsAPI, AdminAPI } from '../../api/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,12 +26,97 @@ type Tile = {
     badge?:      string;
 };
 
+type Stats = {
+    totalHours:  number | null;
+    totalStaff:  number | null;
+    totalCost:   number | null;
+    loading:     boolean;
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function getWeekStart(): string {
+    const d   = new Date();
+    const day = d.getDay();
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().split('T')[0];
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AdminDashboardScreen({ navigation }: any) {
-    const { logout, user }   = useContext(AuthContext);
-    const { unreadCount }    = useNotifications();
+    const { logout, user } = useContext(AuthContext);
+    const { unreadCount }  = useNotifications();
 
+    const locationId = user?.primaryLocation?.id ?? null;
+
+    // ── Stats state ───────────────────────────────────────────────────────────
+    const [stats, setStats] = useState<Stats>({
+        totalHours: null,
+        totalStaff: null,
+        totalCost:  null,
+        loading:    true,
+    });
+
+    useEffect(() => {
+        if (!locationId) {
+            setStats(s => ({ ...s, loading: false }));
+            return;
+        }
+
+        const fetchStats = async () => {
+            setStats(s => ({ ...s, loading: true }));
+            try {
+                const weekStart = getWeekStart();
+
+                const [laborRes, staffRes] = await Promise.allSettled([
+                    ShiftsAPI.laborCost(locationId, weekStart),
+                    AdminAPI.listStaff(locationId),
+                ]);
+
+                const labor = laborRes.status === 'fulfilled'
+                    ? laborRes.value.data
+                    : null;
+
+                const staffList = staffRes.status === 'fulfilled'
+                    ? (staffRes.value.data?.staff ?? [])
+                    : [];
+
+                setStats({
+                    totalHours: labor?.total_hours   ?? null,
+                    totalCost:  labor?.total_cost     ?? null,
+                    totalStaff: staffList.length      ?? null,
+                    loading:    false,
+                });
+            } catch {
+                setStats({ totalHours: null, totalStaff: null, totalCost: null, loading: false });
+            }
+        };
+
+        fetchStats();
+    }, [locationId]);
+
+    // ── Display values ────────────────────────────────────────────────────────
+    const hoursDisplay = stats.loading
+        ? null
+        : stats.totalHours !== null
+        ? `${stats.totalHours}h`
+        : '—';
+
+    const staffDisplay = stats.loading
+        ? null
+        : stats.totalStaff !== null
+        ? String(stats.totalStaff)
+        : '—';
+
+    const costDisplay = stats.loading
+        ? null
+        : stats.totalCost !== null
+        ? `$${stats.totalCost}`
+        : '—';
+
+    // ── Identity ──────────────────────────────────────────────────────────────
     const roleName    = user?.role?.name  ?? 'Manager';
     const displayName = user?.display_name || user?.username || 'Admin';
     const initials    = displayName
@@ -40,6 +127,7 @@ export default function AdminDashboardScreen({ navigation }: any) {
         .slice(0, 2)
         .toUpperCase();
 
+    // ── Tiles ─────────────────────────────────────────────────────────────────
     const tiles: Tile[] = [
         {
             icon:        'calendar-outline',
@@ -64,11 +152,13 @@ export default function AdminDashboardScreen({ navigation }: any) {
             onPress:     () => navigation.navigate('InviteStaff'),
         },
         {
-            icon:        'business-outline',
-            label:       'Locations',
-            description: 'Configure stores and opening hours.',
-            color:       '#6366F1',
-            onPress:     () => {},
+            icon:        'time-outline',
+            label:       'Clock Mgmt',
+            description: 'Clock staff in/out and manage timesheets.',
+            color:       '#0EA5E9',
+            onPress:     () => navigation.navigate('ClockManagement', {
+                locationId: locationId ?? 0,
+            }),
         },
         {
             icon:        'stats-chart-outline',
@@ -83,10 +173,11 @@ export default function AdminDashboardScreen({ navigation }: any) {
             description: 'Auto-generate schedules with AI.',
             color:       '#8B5CF6',
             badge:       'Advanced',
-            onPress:     () => {},
+            onPress:     () => navigation.navigate('AIAssistant'),
         },
     ];
 
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={styles.safe}>
             <ScrollView
@@ -109,19 +200,12 @@ export default function AdminDashboardScreen({ navigation }: any) {
                         </View>
                     </View>
 
-                    {/* Right side — notification bell + logout */}
                     <View style={styles.headerRight}>
-
-                        {/* Notification bell with badge */}
                         <Pressable
                             onPress={() => navigation.navigate('Notifications')}
                             style={styles.iconBtn}
                         >
-                            <Ionicons
-                                name="notifications-outline"
-                                size={22}
-                                color={colors.gray}
-                            />
+                            <Ionicons name="notifications-outline" size={22} color={colors.gray} />
                             {unreadCount > 0 && (
                                 <View style={styles.notifBadge}>
                                     <Text style={styles.notifBadgeText}>
@@ -130,30 +214,45 @@ export default function AdminDashboardScreen({ navigation }: any) {
                                 </View>
                             )}
                         </Pressable>
-
-                        {/* Logout */}
                         <Pressable onPress={logout} style={styles.iconBtn}>
-                            <Ionicons
-                                name="log-out-outline"
-                                size={22}
-                                color={colors.gray}
-                            />
+                            <Ionicons name="log-out-outline" size={22} color={colors.gray} />
                         </Pressable>
                     </View>
                 </View>
 
-                {/* ── Quick stats ── */}
+                {/* ── Stats row ── */}
                 <View style={styles.statsRow}>
-                    <StatChip icon="calendar" label="This week" value="—" />
-                    <StatChip icon="people"   label="Staff"     value="—" />
-                    <StatChip icon="cash"     label="Est. cost" value="—" />
+                    <StatChip
+                        icon="time-outline"
+                        label="This week"
+                        value={hoursDisplay}
+                        loading={stats.loading}
+                        color={colors.primary}
+                    />
+                    <StatChip
+                        icon="people-outline"
+                        label="Staff"
+                        value={staffDisplay}
+                        loading={stats.loading}
+                        color="#10B981"
+                    />
+                    <StatChip
+                        icon="cash-outline"
+                        label="Est. cost"
+                        value={costDisplay}
+                        loading={stats.loading}
+                        color="#F59E0B"
+                    />
                 </View>
 
                 {/* ── Tiles grid ── */}
                 <Text style={styles.sectionLabel}>Management</Text>
                 <View style={styles.grid}>
-                    {tiles.map(tile => (
-                        <AdminTile key={tile.label} tile={tile} />
+                    {tiles.map((tile, index) => (
+                        <AdminTile
+                            key={`tile-${index}-${tile.label}`}
+                            tile={tile}
+                        />
                     ))}
                 </View>
 
@@ -163,25 +262,37 @@ export default function AdminDashboardScreen({ navigation }: any) {
     );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ── StatChip ──────────────────────────────────────────────────────────────────
 
 function StatChip({
     icon,
     label,
     value,
+    loading,
+    color,
 }: {
-    icon:  React.ComponentProps<typeof Ionicons>['name'];
-    label: string;
-    value: string;
+    icon:    React.ComponentProps<typeof Ionicons>['name'];
+    label:   string;
+    value:   string | null;
+    loading: boolean;
+    color:   string;
 }) {
     return (
         <View style={statStyles.chip}>
-            <Ionicons name={icon} size={18} color={colors.primary} />
-            <Text style={statStyles.value}>{value}</Text>
+            <View style={[statStyles.iconWrap, { backgroundColor: color + '15' }]}>
+                <Ionicons name={icon} size={16} color={color} />
+            </View>
+            {loading ? (
+                <ActivityIndicator size="small" color={color} style={{ marginVertical: 2 }} />
+            ) : (
+                <Text style={[statStyles.value, { color }]}>{value ?? '—'}</Text>
+            )}
             <Text style={statStyles.label}>{label}</Text>
         </View>
     );
 }
+
+// ── AdminTile ─────────────────────────────────────────────────────────────────
 
 function AdminTile({ tile }: { tile: Tile }) {
     return (
@@ -195,18 +306,13 @@ function AdminTile({ tile }: { tile: Tile }) {
             <View style={[tileStyles.iconWrap, { backgroundColor: tile.color + '15' }]}>
                 <Ionicons name={tile.icon} size={26} color={tile.color} />
             </View>
-
             {tile.badge && (
                 <View style={tileStyles.badge}>
                     <Text style={tileStyles.badgeText}>{tile.badge}</Text>
                 </View>
             )}
-
             <Text style={tileStyles.label}>{tile.label}</Text>
-            <Text style={tileStyles.desc} numberOfLines={2}>
-                {tile.description}
-            </Text>
-
+            <Text style={tileStyles.desc} numberOfLines={2}>{tile.description}</Text>
             <View style={tileStyles.arrow}>
                 <Ionicons name="arrow-forward" size={14} color={colors.gray} />
             </View>
@@ -225,7 +331,7 @@ const styles = StyleSheet.create({
         flexDirection:  'row',
         alignItems:     'center',
         justifyContent: 'space-between',
-        marginBottom:   24,
+        marginBottom:   20,
     },
     headerLeft: {
         flexDirection: 'row',
@@ -250,9 +356,9 @@ const styles = StyleSheet.create({
         shadowRadius:    6,
         elevation:       4,
     },
-    avatarText:   { color: '#fff', fontSize: 20, fontWeight: '800' },
-    greeting:     { fontSize: 12, color: colors.gray },
-    name:         { fontSize: 18, fontWeight: '800', color: colors.text },
+    avatarText: { color: '#fff', fontSize: 20, fontWeight: '800' },
+    greeting:   { fontSize: 12, color: colors.gray },
+    name:       { fontSize: 18, fontWeight: '800', color: colors.text },
     rolePill: {
         marginTop:         4,
         alignSelf:         'flex-start',
@@ -263,43 +369,37 @@ const styles = StyleSheet.create({
     },
     roleText: { fontSize: 11, color: colors.primary, fontWeight: '700' },
 
-    // Icon buttons (bell + logout)
     iconBtn: {
-        width:          40,
-        height:         40,
-        borderRadius:   20,
+        width:           40,
+        height:          40,
+        borderRadius:    20,
         backgroundColor: '#F3F4F6',
-        alignItems:     'center',
-        justifyContent: 'center',
-        position:       'relative',
-    },
-
-    // Notification badge on bell
-    notifBadge: {
-        position:        'absolute',
-        top:             4,
-        right:           4,
-        minWidth:        16,
-        height:          16,
-        borderRadius:    8,
-        backgroundColor: colors.error,
         alignItems:      'center',
         justifyContent:  'center',
+        position:        'relative',
+    },
+    notifBadge: {
+        position:          'absolute',
+        top:               4,
+        right:             4,
+        minWidth:          16,
+        height:            16,
+        borderRadius:      8,
+        backgroundColor:   colors.error,
+        alignItems:        'center',
+        justifyContent:    'center',
         paddingHorizontal: 2,
-        borderWidth:     1.5,
-        borderColor:     '#F8F8FC',
+        borderWidth:       1.5,
+        borderColor:       '#F8F8FC',
     },
-    notifBadgeText: {
-        fontSize:   9,
-        color:      '#fff',
-        fontWeight: '800',
-    },
+    notifBadgeText: { fontSize: 9, color: '#fff', fontWeight: '800' },
 
     statsRow: {
         flexDirection: 'row',
         gap:           10,
-        marginBottom:  28,
+        marginBottom:  24,
     },
+
     sectionLabel: {
         fontSize:      13,
         fontWeight:    '700',
@@ -319,10 +419,10 @@ const statStyles = StyleSheet.create({
     chip: {
         flex:            1,
         alignItems:      'center',
-        gap:             2,
+        gap:             4,
         backgroundColor: '#fff',
-        borderRadius:    12,
-        paddingVertical: 12,
+        borderRadius:    14,
+        paddingVertical: 14,
         borderWidth:     1,
         borderColor:     '#EFEFEF',
         shadowColor:     '#000',
@@ -330,7 +430,15 @@ const statStyles = StyleSheet.create({
         shadowRadius:    4,
         elevation:       1,
     },
-    value: { fontSize: 16, fontWeight: '800', color: colors.text },
+    iconWrap: {
+        width:          32,
+        height:         32,
+        borderRadius:   16,
+        alignItems:     'center',
+        justifyContent: 'center',
+        marginBottom:   2,
+    },
+    value: { fontSize: 16, fontWeight: '800' },
     label: { fontSize: 11, color: colors.gray },
 });
 

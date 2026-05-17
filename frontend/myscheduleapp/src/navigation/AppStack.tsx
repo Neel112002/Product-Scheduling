@@ -2,33 +2,51 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+// ── Screens ───────────────────────────────────────────────────────────────────
 import HomeScreen from '../screens/HomeScreen';
 import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
-import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
-import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
-import TeamRolesScreen from '../screens/admin/TeamRolesScreen';
-import CompleteProfileScreen from '../screens/CompleteProfileScreen';
-import ScheduleScreen from '../screens/admin/ScheduleScreen';
-import CreateShiftScreen from '../screens/admin/CreateShiftScreen';
-import ShiftDetailScreen from '../screens/admin/ShiftDetailScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import SwapShiftScreen from '../screens/SwapShiftScreen';
 import MySwapsScreen from '../screens/MySwapsScreen';
+import ClockInScreen from '../screens/ClockInScreen';
+import TimesheetScreen from '../screens/TimesheetScreen';
+import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
+import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
+import TeamRolesScreen from '../screens/admin/TeamRolesScreen';
+import ScheduleScreen from '../screens/admin/ScheduleScreen';
+import CreateShiftScreen from '../screens/admin/CreateShiftScreen';
+import ShiftDetailScreen from '../screens/admin/ShiftDetailScreen';
+import ClockManagementScreen from '../screens/admin/ClockManagementScreen';
+import ClockSettingsScreen from '../screens/admin/ClockSettingsScreen';
+import AIAssistantScreen from '../screens/admin/AIAssistantScreen';
+import CompleteProfileScreen from '../screens/CompleteProfileScreen';
+import EmployeeProfileScreen from '../screens/admin/EmployeeProfileScreen';
 
+// ── Param list ────────────────────────────────────────────────────────────────
 export type AppStackParamList = {
+    // Employee
     Dashboard: undefined;
-    AdminDashboard: undefined;
     ProfileSettings: undefined;
-    InviteStaff: undefined;
-    TeamRoles: undefined;
-    CompleteProfile: undefined;
     Notifications: undefined;
     SwapShift: undefined;
     MySwaps: undefined;
-    // ── Schedule ──────────────────────────────
+    ClockIn: undefined;
+    Timesheet: undefined;
+
+    // Admin
+    AdminDashboard: undefined;
+    InviteStaff: undefined;
+    TeamRoles: undefined;
     Schedule: { locationId?: number | null };
     CreateShift: { locationId: number; date: string };
     ShiftDetail: { shiftId: number; locationId: number };
+    ClockManagement: { locationId: number };
+    ClockSettings: undefined;
+    AIAssistant: undefined;
+    EmployeeProfile: { userId: number; locationId: number };
+
+    // Shared
+    CompleteProfile: undefined;
 };
 
 const Stack = createNativeStackNavigator<AppStackParamList>();
@@ -48,26 +66,64 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                 animation: 'slide_from_right',
             }}
         >
-            {/* ── Employee ────────────────────────────────────── */}
+            {/* ── Employee screens ─────────────────────────────────────── */}
             <Stack.Screen
                 name="Dashboard"
                 component={HomeScreen}
                 options={{ headerShown: false }}
             />
+            <Stack.Screen
+                name="ProfileSettings"
+                component={ProfileSettingsScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="Notifications"
+                component={NotificationsScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="SwapShift"
+                component={SwapShiftScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="MySwaps"
+                component={MySwapsScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="ClockIn"
+                component={ClockInScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="Timesheet"
+                component={TimesheetScreen}
+                options={{ headerShown: false }}
+            />
 
-            {/* ── Admin ───────────────────────────────────────── */}
+            {/* ── Admin screens ─────────────────────────────────────────── */}
             <Stack.Screen
                 name="AdminDashboard"
                 component={AdminDashboardScreen}
                 options={{ headerShown: false }}
             />
-
+            <Stack.Screen
+                name="InviteStaff"
+                component={InviteStaffScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="TeamRoles"
+                component={TeamRolesScreen}
+                options={{ headerShown: false }}
+            />
             <Stack.Screen
                 name="Schedule"
                 component={ScheduleScreen}
                 options={{ headerShown: false }}
             />
-
             <Stack.Screen
                 name="CreateShift"
                 component={CreateShiftScreen}
@@ -77,35 +133,28 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                     animation: 'slide_from_bottom',
                 }}
             />
-
             <Stack.Screen
                 name="ShiftDetail"
                 component={ShiftDetailScreen}
-                options={{
-                    headerShown: false,
-                    animation: 'slide_from_right',
-                }}
+                options={{ headerShown: false }}
             />
-
             <Stack.Screen
-                name="InviteStaff"
-                component={InviteStaffScreen}
+                name="ClockManagement"
+                component={ClockManagementScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="ClockSettings"
+                component={ClockSettingsScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="AIAssistant"
+                component={AIAssistantScreen}
                 options={{ headerShown: false }}
             />
 
-            <Stack.Screen
-                name="TeamRoles"
-                component={TeamRolesScreen}
-                options={{ title: 'Team & Roles' }}
-            />
-
-            {/* ── Shared ──────────────────────────────────────── */}
-            <Stack.Screen
-                name="ProfileSettings"
-                component={ProfileSettingsScreen}
-                options={{ title: 'Profile Settings' }}
-            />
-
+            {/* ── Shared ───────────────────────────────────────────────── */}
             <Stack.Screen
                 name="CompleteProfile"
                 component={CompleteProfileScreen}
@@ -113,19 +162,8 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             />
 
             <Stack.Screen
-                name="Notifications"
-                component={NotificationsScreen}
-                options={{ headerShown: false }}
-            />
-
-            <Stack.Screen
-                name="SwapShift"
-                component={SwapShiftScreen}
-                options={{ headerShown: false }}
-            />
-            <Stack.Screen
-                name="MySwaps"
-                component={MySwapsScreen}
+                name="EmployeeProfile"
+                component={EmployeeProfileScreen}
                 options={{ headerShown: false }}
             />
         </Stack.Navigator>

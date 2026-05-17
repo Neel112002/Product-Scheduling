@@ -31,7 +31,8 @@ def create_app():
     from routes.swaps         import router as swaps_router
     from routes.notifications import router as notifications_router
     from routes.ai            import router as ai_router
-
+    from routes.time_entries import router as time_entries_router
+    
     app.register_blueprint(auth_router)
     app.register_blueprint(onboarding_router)
     app.register_blueprint(availability_router)
@@ -40,7 +41,8 @@ def create_app():
     app.register_blueprint(swaps_router)
     app.register_blueprint(notifications_router)
     app.register_blueprint(ai_router)
-
+    app.register_blueprint(time_entries_router)
+    
     # GraphQL
     from gql_server.graphql_server import register_graphql_route
     register_graphql_route(app)

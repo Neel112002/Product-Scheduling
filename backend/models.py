@@ -21,6 +21,15 @@ class Company(db.Model):
     plan         = db.Column(Text, nullable=False, default="free")
     plan_expires = db.Column(DateTime, nullable=True)
 
+    # ── Clock-in settings ─────────────────────────────────────────────────
+    clock_in_method      = db.Column(Text, nullable=False, default="gps")
+    break_duration_mins  = db.Column(Integer, nullable=False, default=30)
+    max_breaks_per_shift = db.Column(Integer, nullable=True)
+    paid_break           = db.Column(Boolean, nullable=False, default=False)
+    gps_radius_meters    = db.Column(Integer, nullable=False, default=100)
+    clock_in_pin         = db.Column(Text, nullable=True)
+    pin_generated_at     = db.Column(DateTime, nullable=True)
+
     locations   = db.relationship("Location",   back_populates="company", cascade="all, delete-orphan")
     employments = db.relationship("Employment", back_populates="company", cascade="all, delete-orphan")
 
@@ -53,33 +62,16 @@ class AppUser(db.Model):
     push_token    = db.Column(Text, nullable=True)
     created_at    = db.Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    documents     = db.relationship(
-        "UserDocument",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    employments   = db.relationship(
-        "Employment",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    # ✅ Fixed: specify foreign_keys to resolve ambiguity with assigned_by
+    documents         = db.relationship("UserDocument",    back_populates="user", cascade="all, delete-orphan")
+    employments       = db.relationship("Employment",      back_populates="user", cascade="all, delete-orphan")
     shift_assignments = db.relationship(
         "ShiftAssignment",
         back_populates="user",
         cascade="all, delete-orphan",
         foreign_keys="[ShiftAssignment.user_id]",
     )
-    notifications = db.relationship(
-        "Notification",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    time_entries  = db.relationship(
-        "TimeEntry",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
+    notifications = db.relationship("Notification",  back_populates="user", cascade="all, delete-orphan")
+    time_entries  = db.relationship("TimeEntry",     back_populates="user", cascade="all, delete-orphan")
 
 
 # ── 4. UserDocument ───────────────────────────────────────────────────────────
@@ -124,7 +116,15 @@ class Employment(db.Model):
     status      = db.Column(Text, nullable=False, default="active")
     start_date  = db.Column(Date, nullable=False, default=date.today)
     end_date    = db.Column(Date, nullable=True)
-
+    hourly_rate          = db.Column(db.Numeric(10, 2), nullable=True)
+    employment_type      = db.Column(Text, nullable=False, default="full_time")
+    max_hours_week       = db.Column(Integer, nullable=True)
+    overtime_eligible    = db.Column(Boolean, nullable=False, default=True)
+    phone                = db.Column(Text, nullable=True)
+    emergency_contact    = db.Column(Text, nullable=True)
+    emergency_phone      = db.Column(Text, nullable=True)
+    notes                = db.Column(Text, nullable=True)
+    
     user     = db.relationship("AppUser",  back_populates="employments")
     company  = db.relationship("Company",  back_populates="employments")
     location = db.relationship("Location", back_populates="employments")
@@ -175,21 +175,9 @@ class Shift(db.Model):
 
     location     = db.relationship("Location",        back_populates="shifts")
     role         = db.relationship("Role")
-    assignments  = db.relationship(
-        "ShiftAssignment",
-        back_populates="shift",
-        cascade="all, delete-orphan",
-    )
-    swaps        = db.relationship(
-        "ShiftSwap",
-        back_populates="shift",
-        cascade="all, delete-orphan",
-    )
-    time_entries = db.relationship(
-        "TimeEntry",
-        back_populates="shift",
-        cascade="all, delete-orphan",
-    )
+    assignments  = db.relationship("ShiftAssignment", back_populates="shift", cascade="all, delete-orphan")
+    swaps        = db.relationship("ShiftSwap",       back_populates="shift", cascade="all, delete-orphan")
+    time_entries = db.relationship("TimeEntry",       back_populates="shift", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -203,25 +191,14 @@ class Shift(db.Model):
 class ShiftAssignment(db.Model):
     __tablename__ = "shift_assignment"
 
-    shift_id    = db.Column(BigInteger, db.ForeignKey("shift.shift_id",    ondelete="CASCADE"), primary_key=True)
-    user_id     = db.Column(BigInteger, db.ForeignKey("app_user.user_id",  ondelete="CASCADE"), primary_key=True)
+    shift_id    = db.Column(BigInteger, db.ForeignKey("shift.shift_id",   ondelete="CASCADE"), primary_key=True)
+    user_id     = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), primary_key=True)
     assigned_at = db.Column(DateTime, nullable=False, default=datetime.utcnow)
     assigned_by = db.Column(BigInteger, db.ForeignKey("app_user.user_id"), nullable=True)
 
-    shift = db.relationship(
-        "Shift",
-        back_populates="assignments",
-    )
-    # ✅ Fixed: explicitly name which FK maps to which relationship
-    user = db.relationship(
-        "AppUser",
-        back_populates="shift_assignments",
-        foreign_keys=[user_id],
-    )
-    assigned_by_user = db.relationship(
-        "AppUser",
-        foreign_keys=[assigned_by],
-    )
+    shift            = db.relationship("Shift",   back_populates="assignments")
+    user             = db.relationship("AppUser", back_populates="shift_assignments", foreign_keys=[user_id])
+    assigned_by_user = db.relationship("AppUser", foreign_keys=[assigned_by])
 
 
 # ── 10. ShiftSwap ─────────────────────────────────────────────────────────────
@@ -239,15 +216,9 @@ class ShiftSwap(db.Model):
     created_at         = db.Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at         = db.Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    shift           = db.relationship("Shift", back_populates="swaps")
-    requesting_user = db.relationship(
-        "AppUser",
-        foreign_keys=[requesting_user_id],
-    )
-    receiving_user  = db.relationship(
-        "AppUser",
-        foreign_keys=[receiving_user_id],
-    )
+    shift           = db.relationship("Shift",   back_populates="swaps")
+    requesting_user = db.relationship("AppUser", foreign_keys=[requesting_user_id])
+    receiving_user  = db.relationship("AppUser", foreign_keys=[receiving_user_id])
 
     __table_args__ = (
         CheckConstraint(
@@ -283,16 +254,39 @@ class TimeEntry(db.Model):
     shift_id      = db.Column(BigInteger, db.ForeignKey("shift.shift_id",   ondelete="SET NULL"), nullable=True)
     clock_in      = db.Column(DateTime(timezone=True), nullable=False)
     clock_out     = db.Column(DateTime(timezone=True), nullable=True)
-    break_minutes = db.Column(Integer, nullable=False, default=0)
     total_minutes = db.Column(Integer, nullable=True)
     notes         = db.Column(Text, nullable=True)
     created_at    = db.Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    user  = db.relationship("AppUser", back_populates="time_entries")
-    shift = db.relationship("Shift",   back_populates="time_entries")
+    user   = db.relationship("AppUser", back_populates="time_entries")
+    shift  = db.relationship("Shift",   back_populates="time_entries")
+    breaks = db.relationship(
+        "BreakEntry",
+        back_populates="time_entry",
+        cascade="all, delete-orphan",
+        order_by="BreakEntry.break_start",
+    )
 
 
-# ── 13. OnboardingInvite ──────────────────────────────────────────────────────
+# ── 13. BreakEntry ────────────────────────────────────────────────────────────
+class BreakEntry(db.Model):
+    __tablename__ = "break_entry"
+
+    break_id         = db.Column(BigInteger, primary_key=True)
+    entry_id         = db.Column(
+        BigInteger,
+        db.ForeignKey("time_entry.entry_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    break_start      = db.Column(DateTime(timezone=True), nullable=False)
+    break_end        = db.Column(DateTime(timezone=True), nullable=True)
+    duration_minutes = db.Column(Integer, nullable=True)
+
+    time_entry = db.relationship("TimeEntry", back_populates="breaks")
+
+
+# ── 14. OnboardingInvite ──────────────────────────────────────────────────────
 class OnboardingInvite(db.Model):
     __tablename__ = "onboarding_invite"
 
@@ -306,7 +300,7 @@ class OnboardingInvite(db.Model):
     location = db.relationship("Location")
 
 
-# ── 14. PasswordResetToken ────────────────────────────────────────────────────
+# ── 15. PasswordResetToken ────────────────────────────────────────────────────
 class PasswordResetToken(db.Model):
     __tablename__ = "password_reset_token"
 
@@ -317,13 +311,10 @@ class PasswordResetToken(db.Model):
     expires_at = db.Column(DateTime, nullable=False)
     used_at    = db.Column(DateTime, nullable=True)
 
-    user = db.relationship(
-        "AppUser",
-        backref=db.backref("password_reset_tokens", lazy="dynamic"),
-    )
+    user = db.relationship("AppUser", backref=db.backref("password_reset_tokens", lazy="dynamic"))
 
 
-# ── 15. TokenBlacklist ────────────────────────────────────────────────────────
+# ── 16. TokenBlacklist ────────────────────────────────────────────────────────
 class TokenBlacklist(db.Model):
     __tablename__ = "token_blacklist"
 
@@ -336,7 +327,7 @@ class TokenBlacklist(db.Model):
     revoked_at = db.Column(DateTime, nullable=False, default=datetime.utcnow)
 
 
-# ── 16. EmailVerificationToken ────────────────────────────────────────────────
+# ── 17. EmailVerificationToken ────────────────────────────────────────────────
 class EmailVerificationToken(db.Model):
     __tablename__ = "email_verification_token"
 
@@ -347,7 +338,4 @@ class EmailVerificationToken(db.Model):
     expires_at = db.Column(DateTime, nullable=False)
     used_at    = db.Column(DateTime, nullable=True)
 
-    user = db.relationship(
-        "AppUser",
-        backref=db.backref("email_verification_tokens", lazy="dynamic"),
-    )
+    user = db.relationship("AppUser", backref=db.backref("email_verification_tokens", lazy="dynamic"))

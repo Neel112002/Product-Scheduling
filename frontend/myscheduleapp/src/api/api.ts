@@ -56,7 +56,7 @@ export const AuthAPI = {
 
     updateProfile: (display_name: string) =>
         api.patch('/auth/profile', { display_name }),
-    
+
     changePassword: (body: {
         current_password: string;
         new_password: string;
@@ -92,6 +92,21 @@ export const AdminAPI = {
         location_id: number;
         position?: string;
     }) => api.post('/onboarding/invite', body),
+
+    getEmployeeProfile: (user_id: number) =>
+        api.get(`/admin/staff/${user_id}/profile`),
+
+    updateEmployeeProfile: (user_id: number, body: {
+        hourly_rate?: number | null;
+        employment_type?: 'full_time' | 'part_time' | 'casual';
+        max_hours_week?: number | null;
+        overtime_eligible?: boolean;
+        phone?: string;
+        emergency_contact?: string;
+        emergency_phone?: string;
+        notes?: string;
+        status?: 'active' | 'inactive';
+    }) => api.put(`/admin/staff/${user_id}/profile`, body),
 };
 
 // ── Shifts API ─────────────────────────────────────────────────────────────────
@@ -200,4 +215,52 @@ export const AIAPI = {
 
     swapRecommendations: (swap_id: number, location_id: number) =>
         api.post('/ai/swap-recommendations', { swap_id, location_id }),
+};
+
+// ── Time Entry API ────────────────────────────────────────────────────────────
+export const TimeEntryAPI = {
+    getActive: () =>
+        api.get('/time-entries/active'),
+
+    getHistory: (limit = 30) =>
+        api.get('/time-entries/', { params: { limit } }),
+
+    getSettings: () =>
+        api.get('/time-entries/settings'),
+
+    clockIn: (body: {
+        shift_id?: number;
+        latitude?: number;
+        longitude?: number;
+        pin?: string;
+        notes?: string;
+    }) => api.post('/time-entries/clock-in', body),
+
+    clockOut: (notes?: string) =>
+        api.post('/time-entries/clock-out', { notes }),
+
+    startBreak: () =>
+        api.post('/time-entries/break-start'),
+
+    endBreak: () =>
+        api.post('/time-entries/break-end'),
+
+    // Manager
+    managerClockIn: (user_id: number, shift_id?: number) =>
+        api.post('/time-entries/manager/clock-in', { user_id, shift_id }),
+
+    managerClockOut: (user_id: number) =>
+        api.post('/time-entries/manager/clock-out', { user_id }),
+
+    // Settings
+    updateSettings: (body: {
+        clock_in_method?: string;
+        break_duration_mins?: number;
+        max_breaks_per_shift?: number | null;
+        paid_break?: boolean;
+        gps_radius_meters?: number;
+    }) => api.put('/time-entries/settings', body),
+
+    generatePin: () =>
+        api.post('/time-entries/settings/generate-pin'),
 };

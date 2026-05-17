@@ -1,5 +1,4 @@
 // src/screens/admin/InviteStaffScreen.tsx
-
 import React, { useEffect, useState } from 'react';
 import {
     View,
@@ -12,48 +11,41 @@ import {
     Alert,
     Modal,
     FlatList,
+    KeyboardAvoidingView,
+    Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons }     from '@expo/vector-icons';
 import { useQuery, useMutation } from '@apollo/client/react';
-import { colors } from '../../theme/colors';
+import { colors }       from '../../theme/colors';
 import {
     MY_LOCATIONS_QUERY,
     SEND_ONBOARDING_INVITE_MUTATION,
 } from '../../graphql/operations';
 
-type Location = {
-    id: number;
-    name: string;
-};
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-type MyLocationsQueryData = {
-    myLocations: Location[];
-};
-
+type Location = { id: number; name: string };
+type MyLocationsQueryData = { myLocations: Location[] };
 type SendInviteData = {
-    sendOnboardingInvite: {
-        inviteId: number;
-        email: string;
-    };
+    sendOnboardingInvite: { inviteId: number; email: string };
+};
+type SendInviteVars = {
+    email:      string;
+    locationId: number;
+    position?:  string | null;
 };
 
-type SendInviteVars = {
-    email: string;
-    locationId: number;
-    position?: string | null;
-};
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function InviteStaffScreen({ navigation }: any) {
-    const [email, setEmail] = useState('');
-    const [position, setPosition] = useState('Staff');
+    const [email,            setEmail]            = useState('');
+    const [position,         setPosition]         = useState('Staff');
     const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-    const [modalOpen, setModalOpen] = useState(false);
-    const [submitting, setSubmitting] = useState(false);
+    const [modalOpen,        setModalOpen]        = useState(false);
+    const [submitting,       setSubmitting]       = useState(false);
 
-    const { data, loading } = useQuery<MyLocationsQueryData>(
-        MY_LOCATIONS_QUERY
-    );
+    const { data, loading } = useQuery<MyLocationsQueryData>(MY_LOCATIONS_QUERY);
 
     useEffect(() => {
         if (data?.myLocations?.length && !selectedLocation) {
@@ -70,36 +62,32 @@ export default function InviteStaffScreen({ navigation }: any) {
             Alert.alert('Missing email', 'Please enter the employee email.');
             return;
         }
-
         if (!selectedLocation) {
             Alert.alert('Missing location', 'Please select a location.');
             return;
         }
 
+        setSubmitting(true);
         try {
-            setSubmitting(true);
-
             await sendInvite({
                 variables: {
-                    email: email.trim(),
+                    email:      email.trim().toLowerCase(),
                     locationId: selectedLocation.id,
-                    position: position.trim() || null,
+                    position:   position.trim() || null,
                 },
             });
 
-            Alert.alert('Success', 'Onboarding invite sent successfully.', [
-                {
-                    text: 'OK',
-                    onPress: () => navigation.goBack(),
-                },
-            ]);
-
+            Alert.alert(
+                'Invite sent ✓',
+                `An email with login details has been sent to ${email.trim()}.`,
+                [{ text: 'OK', onPress: () => navigation.goBack() }]
+            );
             setEmail('');
             setPosition('Staff');
         } catch (err: any) {
             const message =
-                err?.message ||
                 err?.graphQLErrors?.[0]?.message ||
+                err?.message ||
                 'Failed to send invite.';
             Alert.alert('Error', message);
         } finally {
@@ -107,96 +95,173 @@ export default function InviteStaffScreen({ navigation }: any) {
         }
     };
 
+    const locations = data?.myLocations ?? [];
+
+    // ── Render ────────────────────────────────────────────────────────────────
     return (
-        <SafeAreaView style={styles.safe} edges={['top']}>
-            <ScrollView
-                contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-                keyboardShouldPersistTaps="handled"
+        <SafeAreaView style={styles.safe}>
+
+            {/* ── Header ── */}
+            <View style={styles.header}>
+                <Pressable
+                    onPress={() => navigation.goBack()}
+                    style={styles.backBtn}
+                >
+                    <Ionicons name="arrow-back" size={22} color={colors.text} />
+                </Pressable>
+                <Text style={styles.headerTitle}>Invite Staff</Text>
+                <View style={{ width: 36 }} />
+            </View>
+
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             >
-                {/* Email Input */}
-                <View style={styles.card}>
-                    <Text style={styles.label}>Employee email</Text>
-                    <TextInput
-                        value={email}
-                        onChangeText={setEmail}
-                        placeholder="employee@company.com"
-                        autoCapitalize="none"
-                        keyboardType="email-address"
-                        style={styles.input}
-                    />
+                <ScrollView
+                    contentContainerStyle={styles.content}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                >
+                    {/* ── Intro banner ── */}
+                    <View style={styles.infoBanner}>
+                        <Ionicons name="mail-outline" size={20} color={colors.primary} />
+                        <Text style={styles.infoText}>
+                            The staff member will receive an email with a temporary password
+                            and can log in immediately.
+                        </Text>
+                    </View>
 
-                    <Text style={styles.label}>Position / role (optional)</Text>
-                    <TextInput
-                        value={position}
-                        onChangeText={setPosition}
-                        placeholder="Staff, Manager..."
-                        style={styles.input}
-                    />
-                </View>
+                    {/* ── Form card ── */}
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Employee details</Text>
 
-                {/* Location Selector */}
-                <View style={styles.card}>
-                    <Text style={styles.label}>Location</Text>
+                        <Text style={styles.label}>Email address</Text>
+                        <TextInput
+                            value={email}
+                            onChangeText={setEmail}
+                            placeholder="employee@company.com"
+                            placeholderTextColor={colors.gray}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                            autoCorrect={false}
+                            style={styles.input}
+                            returnKeyType="next"
+                        />
 
-                    {loading ? (
-                        <ActivityIndicator />
-                    ) : (
-                        <Pressable
-                            style={styles.locationButton}
-                            onPress={() => setModalOpen(true)}
-                        >
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={styles.locationText}>
+                        <Text style={[styles.label, { marginTop: 4 }]}>
+                            Position / role
+                            <Text style={styles.optional}> (optional)</Text>
+                        </Text>
+                        <TextInput
+                            value={position}
+                            onChangeText={setPosition}
+                            placeholder="e.g. Barista, Server, Host..."
+                            placeholderTextColor={colors.gray}
+                            style={styles.input}
+                            returnKeyType="done"
+                        />
+                    </View>
+
+                    {/* ── Location card ── */}
+                    <View style={styles.card}>
+                        <Text style={styles.cardTitle}>Assign to location</Text>
+
+                        {loading ? (
+                            <ActivityIndicator color={colors.primary} />
+                        ) : locations.length === 0 ? (
+                            <Text style={styles.noLocText}>No locations found.</Text>
+                        ) : locations.length === 1 ? (
+                            /* Single location — just show it, no picker needed */
+                            <View style={styles.singleLocation}>
+                                <Ionicons name="location-outline" size={16} color={colors.primary} />
+                                <Text style={styles.singleLocationText}>
+                                    {locations[0].name}
+                                </Text>
+                                <View style={styles.defaultBadge}>
+                                    <Text style={styles.defaultBadgeText}>Default</Text>
+                                </View>
+                            </View>
+                        ) : (
+                            /* Multiple locations — show picker */
+                            <Pressable
+                                style={styles.locationPicker}
+                                onPress={() => setModalOpen(true)}
+                            >
+                                <Ionicons name="location-outline" size={16} color={colors.primary} />
+                                <Text style={styles.locationPickerText}>
                                     {selectedLocation?.name ?? 'Select location'}
                                 </Text>
                                 <Ionicons
                                     name="chevron-down"
-                                    size={18}
+                                    size={16}
                                     color={colors.gray}
-                                    style={{ marginLeft: 6 }}
+                                    style={{ marginLeft: 'auto' }}
                                 />
-                            </View>
-                        </Pressable>
-                    )}
-                </View>
+                            </Pressable>
+                        )}
+                    </View>
 
-                {/* Submit Button */}
-                <Pressable
-                    style={[
-                        styles.submitButton,
-                        (submitting || !selectedLocation) && { opacity: 0.6 },
-                    ]}
-                    onPress={handleSendInvite}
-                    disabled={submitting || !selectedLocation}
-                >
-                    {submitting ? (
-                        <ActivityIndicator color="#fff" />
-                    ) : (
-                        <Text style={styles.submitText}>Send Invite</Text>
-                    )}
-                </Pressable>
-            </ScrollView>
+                    {/* ── Send button ── */}
+                    <Pressable
+                        style={[
+                            styles.sendBtn,
+                            (submitting || !selectedLocation || !email.trim()) && { opacity: 0.5 },
+                        ]}
+                        onPress={handleSendInvite}
+                        disabled={submitting || !selectedLocation || !email.trim()}
+                    >
+                        {submitting ? (
+                            <ActivityIndicator color="#fff" />
+                        ) : (
+                            <>
+                                <Ionicons name="send-outline" size={18} color="#fff" />
+                                <Text style={styles.sendBtnText}>Send Invite</Text>
+                            </>
+                        )}
+                    </Pressable>
 
-            {/* Location Modal */}
+                    <Text style={styles.footerNote}>
+                        Staff will be assigned the "Staff" role by default.
+                        You can change their role from Team &amp; Roles after they join.
+                    </Text>
+                </ScrollView>
+            </KeyboardAvoidingView>
+
+            {/* ── Location picker modal ── */}
             <Modal visible={modalOpen} transparent animationType="fade">
                 <Pressable
                     style={styles.modalBackdrop}
                     onPress={() => setModalOpen(false)}
                 >
                     <View style={styles.modalSheet}>
+                        <Text style={styles.modalTitle}>Select location</Text>
                         <FlatList
-                            data={data?.myLocations}
-                            keyExtractor={(item) => item.id.toString()}
+                            data={locations}
+                            keyExtractor={item => String(item.id)}
                             renderItem={({ item }) => (
                                 <Pressable
-                                    style={styles.modalRow}
+                                    style={[
+                                        styles.modalRow,
+                                        selectedLocation?.id === item.id && styles.modalRowActive,
+                                    ]}
                                     onPress={() => {
                                         setSelectedLocation(item);
                                         setModalOpen(false);
                                     }}
                                 >
-                                    <Text>{item.name}</Text>
+                                    <Text style={[
+                                        styles.modalRowText,
+                                        selectedLocation?.id === item.id && { color: colors.primary, fontWeight: '700' },
+                                    ]}>
+                                        {item.name}
+                                    </Text>
+                                    {selectedLocation?.id === item.id && (
+                                        <Ionicons name="checkmark" size={18} color={colors.primary} />
+                                    )}
                                 </Pressable>
+                            )}
+                            ItemSeparatorComponent={() => (
+                                <View style={{ height: 1, backgroundColor: '#F0F0F0' }} />
                             )}
                         />
                     </View>
@@ -206,71 +271,196 @@ export default function InviteStaffScreen({ navigation }: any) {
     );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-    safe: {
-        flex: 1,
-        backgroundColor: colors.background,
+    safe:    { flex: 1, backgroundColor: '#F8F8FC' },
+    content: { padding: 16, paddingBottom: 40 },
+
+    header: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        paddingHorizontal: 16,
+        paddingVertical:   12,
+        backgroundColor:   '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+    backBtn:     { padding: 4, marginRight: 8 },
+    headerTitle: {
+        flex:       1,
+        fontSize:   18,
+        fontWeight: '700',
+        color:      colors.text,
+        textAlign:  'center',
+    },
+
+    infoBanner: {
+        flexDirection:   'row',
+        alignItems:      'flex-start',
+        gap:             10,
+        backgroundColor: colors.subtleAccent,
+        borderRadius:    12,
+        padding:         12,
+        marginBottom:    16,
+        borderWidth:     1,
+        borderColor:     colors.primary + '20',
+    },
+    infoText: {
+        flex:       1,
+        fontSize:   13,
+        color:      colors.text,
+        lineHeight: 20,
     },
 
     card: {
         backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 16,
+        borderRadius:    16,
+        padding:         16,
+        marginBottom:    12,
+        borderWidth:     1,
+        borderColor:     '#EFEFEF',
+        shadowColor:     '#000',
+        shadowOpacity:   0.03,
+        shadowRadius:    4,
+        elevation:       1,
+    },
+    cardTitle: {
+        fontSize:     15,
+        fontWeight:   '700',
+        color:        colors.text,
+        marginBottom: 14,
     },
 
     label: {
-        fontSize: 13,
+        fontSize:     13,
+        fontWeight:   '600',
+        color:        colors.text,
         marginBottom: 6,
-        color: colors.text,
+    },
+    optional: {
+        fontWeight: '400',
+        color:      colors.gray,
     },
 
     input: {
-        borderWidth: 1,
-        borderColor: colors.inputBorder,
-        borderRadius: 8,
-        padding: 10,
-        marginBottom: 12,
+        borderWidth:       1,
+        borderColor:       colors.inputBorder,
+        borderRadius:      10,
+        paddingHorizontal: 12,
+        paddingVertical:   10,
+        fontSize:          14,
+        color:             colors.text,
+        backgroundColor:   '#FAFAFA',
+        marginBottom:      12,
     },
 
-    locationButton: {
-        paddingVertical: 12,
+    // Single location
+    singleLocation: {
+        flexDirection:   'row',
+        alignItems:      'center',
+        gap:             8,
+        backgroundColor: colors.subtleAccent,
+        borderRadius:    10,
+        padding:         12,
     },
-
-    locationText: {
-        fontSize: 15,
+    singleLocationText: {
+        flex:       1,
+        fontSize:   14,
         fontWeight: '600',
-        color: colors.text,
+        color:      colors.text,
     },
-
-    submitButton: {
-        backgroundColor: colors.primary,
-        paddingVertical: 14,
-        borderRadius: 999,
-        alignItems: 'center',
+    defaultBadge: {
+        paddingHorizontal: 8,
+        paddingVertical:   2,
+        borderRadius:      999,
+        backgroundColor:   colors.primary + '20',
     },
-
-    submitText: {
-        color: '#fff',
+    defaultBadgeText: {
+        fontSize:   11,
+        color:      colors.primary,
         fontWeight: '700',
-        fontSize: 15,
+    },
+    noLocText: { fontSize: 13, color: colors.gray },
+
+    // Multi-location picker
+    locationPicker: {
+        flexDirection:   'row',
+        alignItems:      'center',
+        gap:             8,
+        borderWidth:     1,
+        borderColor:     colors.inputBorder,
+        borderRadius:    10,
+        paddingHorizontal: 12,
+        paddingVertical:   12,
+        backgroundColor: '#FAFAFA',
+    },
+    locationPickerText: {
+        flex:       1,
+        fontSize:   14,
+        fontWeight: '600',
+        color:      colors.text,
     },
 
+    // Send button
+    sendBtn: {
+        flexDirection:   'row',
+        alignItems:      'center',
+        justifyContent:  'center',
+        gap:             8,
+        backgroundColor: colors.primary,
+        borderRadius:    999,
+        paddingVertical: 14,
+        marginTop:       4,
+        shadowColor:     colors.primary,
+        shadowOpacity:   0.25,
+        shadowRadius:    8,
+        elevation:       4,
+    },
+    sendBtnText: {
+        color:      '#fff',
+        fontWeight: '700',
+        fontSize:   15,
+    },
+
+    footerNote: {
+        fontSize:   12,
+        color:      colors.gray,
+        textAlign:  'center',
+        marginTop:  16,
+        lineHeight: 18,
+        paddingHorizontal: 8,
+    },
+
+    // Modal
     modalBackdrop: {
-        flex: 1,
-        justifyContent: 'center',
-        padding: 20,
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        flex:            1,
+        justifyContent:  'center',
+        padding:         24,
+        backgroundColor: 'rgba(0,0,0,0.4)',
     },
-
     modalSheet: {
         backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 12,
-        maxHeight: 300,
+        borderRadius:    16,
+        paddingVertical: 8,
+        maxHeight:       320,
     },
-
+    modalTitle: {
+        fontSize:          14,
+        fontWeight:        '700',
+        color:             colors.gray,
+        paddingHorizontal: 16,
+        paddingVertical:   10,
+        textTransform:     'uppercase',
+        letterSpacing:     0.6,
+    },
     modalRow: {
-        paddingVertical: 12,
+        flexDirection:     'row',
+        alignItems:        'center',
+        justifyContent:    'space-between',
+        paddingHorizontal: 16,
+        paddingVertical:   14,
     },
+    modalRowActive:  { backgroundColor: colors.subtleAccent },
+    modalRowText:    { fontSize: 15, color: colors.text },
 });
