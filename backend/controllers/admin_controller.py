@@ -33,6 +33,8 @@ class AdminController:
                         "name":     l.loc_name,
                         "address":  l.loc_address,
                         "timezone": l.timezone,
+                        "loc_lat":  l.loc_lat,
+                        "loc_lng":  l.loc_lng,
                     }
                     for l in locations
                 ]
@@ -204,6 +206,53 @@ class AdminController:
             "message": "Profile updated",
             "profile": self._serialize_employee(emp),
         }), 200
+
+    # ── PUT /admin/locations/<loc_id> ─────────────────────────────────────────
+    def update_location(self, loc_id: int):
+        try:
+            user_id = int(get_jwt_identity())
+            emp = Employment.query.filter_by(user_id=user_id, status="active").first()
+            if not emp:
+                return jsonify({"error": "Not found"}), 404
+
+            location = Location.query.filter_by(
+                loc_id=loc_id, comp_id=emp.comp_id
+            ).first()
+            if not location:
+                return jsonify({"error": "Location not found"}), 404
+
+            data = request.get_json(silent=True) or {}
+
+            if "loc_name" in data and data["loc_name"]:
+                location.loc_name = data["loc_name"]
+            if "loc_address" in data:
+                location.loc_address = data["loc_address"]
+            if "loc_lat" in data:
+                location.loc_lat = (
+                    float(data["loc_lat"]) if data["loc_lat"] is not None else None
+                )
+            if "loc_lng" in data:
+                location.loc_lng = (
+                    float(data["loc_lng"]) if data["loc_lng"] is not None else None
+                )
+
+            db.session.commit()
+
+            return jsonify({
+                "message": "Location updated",
+                "location": {
+                    "id":      location.loc_id,
+                    "name":    location.loc_name,
+                    "address": location.loc_address,
+                    "loc_lat": location.loc_lat,
+                    "loc_lng": location.loc_lng,
+                },
+            }), 200
+
+        except Exception:
+            from flask import current_app
+            current_app.logger.exception("Failed to update location")
+            return jsonify({"error": "Something went wrong"}), 500
 
     # ── Serializer ────────────────────────────────────────────────────────────
     @staticmethod

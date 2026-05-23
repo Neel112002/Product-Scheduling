@@ -43,6 +43,8 @@ class Location(db.Model):
     loc_name    = db.Column(Text, nullable=False)
     loc_address = db.Column(Text)
     timezone    = db.Column(Text, nullable=False, default="UTC")
+    loc_lat     = db.Column(db.Float, nullable=True)
+    loc_lng     = db.Column(db.Float, nullable=True)
 
     company     = db.relationship("Company",    back_populates="locations")
     shifts      = db.relationship("Shift",      back_populates="location", cascade="all, delete-orphan")
@@ -124,7 +126,7 @@ class Employment(db.Model):
     emergency_contact    = db.Column(Text, nullable=True)
     emergency_phone      = db.Column(Text, nullable=True)
     notes                = db.Column(Text, nullable=True)
-    
+
     user     = db.relationship("AppUser",  back_populates="employments")
     company  = db.relationship("Company",  back_populates="employments")
     location = db.relationship("Location", back_populates="employments")

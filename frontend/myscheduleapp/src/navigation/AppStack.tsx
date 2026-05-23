@@ -21,6 +21,7 @@ import ClockSettingsScreen from '../screens/admin/ClockSettingsScreen';
 import AIAssistantScreen from '../screens/admin/AIAssistantScreen';
 import CompleteProfileScreen from '../screens/CompleteProfileScreen';
 import EmployeeProfileScreen from '../screens/admin/EmployeeProfileScreen';
+import AnalyticsScreen from '../screens/admin/AnalyticsScreen';
 
 // ── Param list ────────────────────────────────────────────────────────────────
 export type AppStackParamList = {
@@ -44,6 +45,7 @@ export type AppStackParamList = {
     ClockSettings: undefined;
     AIAssistant: undefined;
     EmployeeProfile: { userId: number; locationId: number };
+    Analytics: { locationId?: number };
 
     // Shared
     CompleteProfile: undefined;
@@ -164,6 +166,12 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             <Stack.Screen
                 name="EmployeeProfile"
                 component={EmployeeProfileScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="Analytics"
+                component={AnalyticsScreen}
                 options={{ headerShown: false }}
             />
         </Stack.Navigator>

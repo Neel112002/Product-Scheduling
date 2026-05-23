@@ -151,3 +151,85 @@ class TimeEntryController:
             }), 200
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
+        
+    def get_team_status(self):
+        from datetime import datetime, timezone, timedelta
+        from models import Shift, ShiftAssignment, Employment, AppUser
+
+        user_id     = int(get_jwt_identity())
+        location_id = request.args.get("location_id", type=int)
+
+        if not location_id:
+            return jsonify({"error": "location_id required"}), 400
+
+        now   = datetime.now(timezone.utc)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end   = start + timedelta(days=1)
+
+        # All active employees at this location
+        emps = Employment.query.filter_by(
+            location_id=location_id,
+            status="active",
+        ).all()
+
+        team_status = []
+
+        for emp in emps:
+            if not emp.user:
+                continue
+
+            user = emp.user
+
+            # ✅ Find today's shift — SKIP if no shift today
+            today_shift = (
+                Shift.query
+                .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.shift_id)
+                .filter(
+                    ShiftAssignment.user_id == user.user_id,
+                    Shift.location_id       == location_id,
+                    Shift.status            == "published",
+                    Shift.start_time        >= start,
+                    Shift.start_time        <  end,
+                )
+                .first()
+            )
+
+            # ✅ Only include employees with a shift today
+            if not today_shift:
+                continue
+
+            # Find active time entry
+            active_entry = TimeEntry.query.filter_by(
+                user_id=user.user_id,
+                clock_out=None,
+            ).first()
+
+            # Determine status
+            if active_entry:
+                is_on_break = any(b.break_end is None for b in active_entry.breaks)
+                status      = "on_break" if is_on_break else "working"
+            else:
+                shift_start = today_shift.start_time
+                if shift_start.tzinfo is None:
+                    shift_start = shift_start.replace(tzinfo=timezone.utc)
+                status = "late" if now > shift_start + timedelta(minutes=10) else "scheduled"
+
+            name     = user.display_name or user.username
+            initials = "".join(p[0] for p in name.strip().split()[:2]).upper()
+
+            team_status.append({
+                "user_id":     user.user_id,
+                "name":        name,
+                "initials":    initials,
+                "role":        emp.role.name if emp.role else "Staff",
+                "status":      status,
+                "shift_start": today_shift.start_time.isoformat() if today_shift else None,
+                "shift_end":   today_shift.end_time.isoformat()   if today_shift else None,
+                "clocked_in":  active_entry.clock_in.isoformat()  if active_entry else None,
+            })
+
+        # Sort: late first, then working, on_break, scheduled
+        ORDER = {"late": 0, "working": 1, "on_break": 2, "scheduled": 3}
+        team_status.sort(key=lambda x: ORDER.get(x["status"], 4))
+
+        return jsonify({"team": team_status}), 200

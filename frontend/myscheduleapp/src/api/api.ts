@@ -78,6 +78,13 @@ export const AdminAPI = {
     listLocations: () =>
         api.get('/admin/locations'),
 
+    updateLocation: (loc_id: number, body: {
+        loc_name?: string;
+        loc_address?: string;
+        loc_lat?: number | null;
+        loc_lng?: number | null;
+    }) => api.put(`/admin/locations/${loc_id}`, body),
+
     listStaff: (location_id: number) =>
         api.get('/admin/staff', { params: { location_id } }),
 
@@ -228,6 +235,9 @@ export const TimeEntryAPI = {
     getSettings: () =>
         api.get('/time-entries/settings'),
 
+    getTeamStatus: (location_id: number) =>
+        api.get('/time-entries/team-status', { params: { location_id } }),
+
     clockIn: (body: {
         shift_id?: number;
         latitude?: number;
@@ -245,14 +255,12 @@ export const TimeEntryAPI = {
     endBreak: () =>
         api.post('/time-entries/break-end'),
 
-    // Manager
     managerClockIn: (user_id: number, shift_id?: number) =>
         api.post('/time-entries/manager/clock-in', { user_id, shift_id }),
 
     managerClockOut: (user_id: number) =>
         api.post('/time-entries/manager/clock-out', { user_id }),
 
-    // Settings
     updateSettings: (body: {
         clock_in_method?: string;
         break_duration_mins?: number;
@@ -263,4 +271,11 @@ export const TimeEntryAPI = {
 
     generatePin: () =>
         api.post('/time-entries/settings/generate-pin'),
+};
+
+export const AnalyticsAPI = {
+    get: (location_id: number, period: 'day' | 'week' | 'month', start_date?: string) =>
+        api.get('/admin/analytics/', {
+            params: { location_id, period, start_date },
+        }),
 };

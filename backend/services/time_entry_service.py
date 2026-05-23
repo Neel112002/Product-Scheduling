@@ -11,33 +11,31 @@ from models import TimeEntry, BreakEntry, Shift, ShiftAssignment, Company, Emplo
 class TimeEntryService:
 
     # ── Clock in ──────────────────────────────────────────────────────────────
-    def clock_in(
-        self,
-        *,
-        user_id:   int,
-        shift_id:  Optional[int] = None,
-        notes:     Optional[str] = None,
-        latitude:  Optional[float] = None,
-        longitude: Optional[float] = None,
-        pin:       Optional[str] = None,
-    ) -> TimeEntry:
-        # Block double clock-in
+    def clock_in(self, *, user_id, shift_id=None, notes=None,
+                latitude=None, longitude=None, pin=None) -> TimeEntry:
+
         if self._get_active(user_id):
             raise ValueError("You are already clocked in. Clock out first.")
 
         company = self._get_company(user_id)
         method  = company.clock_in_method if company else "gps"
 
-        # ── Validate by method ─────────────────────────────────────────────
         if method == "gps":
             if latitude is None or longitude is None:
                 raise ValueError("Location required to clock in.")
-            if company and not self._within_radius(
-                latitude, longitude, company, company.gps_radius_meters
-            ):
-                raise ValueError(
-                    f"You must be within {company.gps_radius_meters}m of your location to clock in."
-                )
+            if company:
+                location = self._get_location(user_id, shift_id)
+                if location and location.loc_lat is not None and location.loc_lng is not None:
+                    if not self._within_radius(
+                        latitude, longitude,
+                        location.loc_lat, location.loc_lng,
+                        company.gps_radius_meters,
+                    ):
+                        raise ValueError(
+                            f"You must be within {company.gps_radius_meters}m of your "
+                            f"location to clock in."
+                        )
+                # If location has no GPS coords configured, GPS check passes gracefully
 
         elif method == "qr_pin":
             if not pin:
@@ -48,13 +46,37 @@ class TimeEntryService:
         elif method == "manager_only":
             raise ValueError("Clock-in is managed by your manager.")
 
-        # If shift_id provided, verify assignment
+        # ✅ Validate shift time window
         if shift_id:
             assignment = ShiftAssignment.query.filter_by(
                 shift_id=shift_id, user_id=user_id
             ).first()
             if not assignment:
                 raise ValueError("You are not assigned to this shift.")
+
+            from models import Shift
+            shift = Shift.query.get(shift_id)
+            if shift:
+                now         = datetime.now(timezone.utc)
+                shift_start = shift.start_time
+                if shift_start.tzinfo is None:
+                    shift_start = shift_start.replace(tzinfo=timezone.utc)
+
+                window_open  = shift_start - timedelta(minutes=10)
+                window_close = shift_start + timedelta(minutes=10)
+
+                if now < window_open:
+                    mins_until = int((window_open - now).total_seconds() / 60)
+                    raise ValueError(
+                        f"Too early to clock in. You can clock in from "
+                        f"{window_open.strftime('%I:%M %p')} "
+                        f"(in {mins_until} minutes)."
+                    )
+                if now > window_close:
+                    raise ValueError(
+                        "Clock-in window has passed. "
+                        "Please contact your manager to clock you in manually."
+                    )
 
         entry = TimeEntry(
             user_id=user_id,
@@ -116,7 +138,6 @@ class TimeEntryService:
         if not active:
             raise ValueError("You must be clocked in to take a break.")
 
-        # Check if already on break
         ongoing_break = next(
             (b for b in active.breaks if b.break_end is None), None
         )
@@ -125,7 +146,6 @@ class TimeEntryService:
 
         company = self._get_company(user_id)
 
-        # Check max breaks limit
         if company and company.max_breaks_per_shift is not None:
             completed = [b for b in active.breaks if b.break_end is not None]
             if len(completed) >= company.max_breaks_per_shift:
@@ -170,7 +190,6 @@ class TimeEntryService:
         if not active:
             raise ValueError("You are not currently clocked in.")
 
-        # Auto-end any ongoing break
         ongoing = next((b for b in active.breaks if b.break_end is None), None)
         if ongoing:
             now = datetime.now(timezone.utc)
@@ -179,6 +198,31 @@ class TimeEntryService:
                 break_start = break_start.replace(tzinfo=timezone.utc)
             ongoing.break_end        = now
             ongoing.duration_minutes = int((now - break_start).total_seconds() / 60)
+
+        if active.shift_id:
+            from models import Shift
+            shift = Shift.query.get(active.shift_id)
+            if shift:
+                now       = datetime.now(timezone.utc)
+                shift_end = shift.end_time
+                if shift_end.tzinfo is None:
+                    shift_end = shift_end.replace(tzinfo=timezone.utc)
+
+                window_open  = shift_end - timedelta(minutes=10)
+                window_close = shift_end + timedelta(minutes=10)
+
+                if now < window_open:
+                    mins_left = int((window_open - now).total_seconds() / 60)
+                    raise ValueError(
+                        f"Too early to clock out. Your shift ends at "
+                        f"{shift_end.strftime('%I:%M %p')} "
+                        f"({mins_left} minutes remaining)."
+                    )
+                if now > window_close:
+                    raise ValueError(
+                        "Clock-out window has passed. "
+                        "Please contact your manager to clock you out manually."
+                    )
 
         if notes:
             active.notes = notes
@@ -311,9 +355,9 @@ class TimeEntryService:
         company = self._get_company(manager_user_id)
         if not company:
             raise ValueError("No company found.")
-        pin = f"{secrets.randbelow(9000) + 1000}"  # 4-digit PIN
-        company.clock_in_pin      = self._hash_pin(pin)
-        company.pin_generated_at  = datetime.now(timezone.utc)
+        pin = f"{secrets.randbelow(9000) + 1000}"
+        company.clock_in_pin     = self._hash_pin(pin)
+        company.pin_generated_at = datetime.now(timezone.utc)
         db.session.commit()
         return pin
 
@@ -328,12 +372,10 @@ class TimeEntryService:
         if clock_out and clock_out.tzinfo is None:
             clock_out = clock_out.replace(tzinfo=timezone.utc)
 
-        # Live duration for active entries
         live_minutes = None
         if clock_in and not clock_out:
             live_minutes = int((datetime.now(timezone.utc) - clock_in).total_seconds() / 60)
 
-        # Current break
         ongoing_break = next(
             (b for b in entry.breaks if b.break_end is None), None
         )
@@ -388,7 +430,6 @@ class TimeEntryService:
                 not in ("owner", "manager", "supervisor"):
             raise PermissionError("Manager access required.")
 
-        # Make sure target is in same company
         tgt_emp = Employment.query.filter_by(
             user_id=target_user_id,
             comp_id=mgr_emp.comp_id,
@@ -398,20 +439,40 @@ class TimeEntryService:
             raise ValueError("Employee not found in your company.")
 
     @staticmethod
+    def _get_location(user_id: int, shift_id: Optional[int] = None):
+        """Return the Location for a shift, or fall back to the user's employment location."""
+        from models import Location
+        if shift_id:
+            shift = Shift.query.get(shift_id)
+            if shift and shift.location_id:
+                return Location.query.get(shift.location_id)
+        emp = Employment.query.filter_by(user_id=user_id, status="active").first()
+        if emp and emp.location_id:
+            return Location.query.get(emp.location_id)
+        return None
+
+    @staticmethod
     def _within_radius(
-        lat: float,
-        lng: float,
-        company: Company,
+        user_lat: float,
+        user_lng: float,
+        loc_lat: float,
+        loc_lng: float,
         radius_m: int,
     ) -> bool:
         """
-        Simple Haversine distance check.
-        For now returns True if company has no coordinates set.
-        In production, store company lat/lng and compare.
+        Haversine distance check.
+        Returns True if the user is within radius_m metres of loc_lat/loc_lng.
         """
-        # TODO: store location lat/lng in Location model
-        # For now, always passes GPS check (scaffolded)
-        return True
+        import math
+        R = 6_371_000  # Earth radius in metres
+        phi1 = math.radians(user_lat)
+        phi2 = math.radians(loc_lat)
+        dphi = math.radians(loc_lat - user_lat)
+        dlam = math.radians(loc_lng - user_lng)
+        a = (math.sin(dphi / 2) ** 2
+             + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2)
+        distance = 2 * R * math.asin(math.sqrt(a))
+        return distance <= radius_m
 
     @staticmethod
     def _hash_pin(pin: str) -> str:
@@ -421,7 +482,6 @@ class TimeEntryService:
     def _verify_pin(pin: str, company: Company) -> bool:
         if not company.clock_in_pin or not company.pin_generated_at:
             return False
-        # PIN expires after 24 hours
         generated = company.pin_generated_at
         if generated.tzinfo is None:
             generated = generated.replace(tzinfo=timezone.utc)
@@ -439,13 +499,11 @@ class TimeEntryService:
 
         total_mins = int((now - clock_in).total_seconds() / 60)
 
-        # Get company paid_break setting
         emp     = Employment.query.filter_by(user_id=active.user_id, status="active").first()
         company = emp.company if emp else None
         paid    = company.paid_break if company else False
 
         if not paid:
-            # Deduct completed break time
             break_mins = sum(b.duration_minutes or 0 for b in active.breaks)
             total_mins = max(total_mins - break_mins, 0)
 

@@ -20,11 +20,11 @@ import {
     Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../../theme/colors';
-import { AIAPI } from '../../api/api';
-import { AuthContext } from '../../context/AuthContext';
-import { useQuery } from '@apollo/client/react';
+import { Ionicons }     from '@expo/vector-icons';
+import { colors }       from '../../theme/colors';
+import { AIAPI, AdminAPI } from '../../api/api';
+import { AuthContext }  from '../../context/AuthContext';
+import { useQuery }     from '@apollo/client/react';
 import { MY_LOCATIONS_QUERY } from '../../graphql/operations';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,73 +32,73 @@ import { MY_LOCATIONS_QUERY } from '../../graphql/operations';
 type MessageRole = 'user' | 'assistant' | 'system';
 
 type ExecutedShift = {
-    shift_id: number;
+    shift_id:   number;
     start_time: string;
-    end_time: string;
-    role?: string | null;
-    status: string;
+    end_time:   string;
+    role?:      string | null;
+    status:     string;
 };
 
 type Message = {
-    id: string;
-    role: MessageRole;
-    content: string;
-    timestamp: Date;
+    id:               string;
+    role:             MessageRole;
+    content:          string;
+    timestamp:        Date;
     executed_shifts?: ExecutedShift[];
-    requires_plan?: 'advanced' | 'professional';
+    requires_plan?:   'advanced' | 'professional';
 };
 
-type Location = { id: number; name: string };
+type Location        = { id: number; name: string };
 type MyLocationsData = { myLocations: Location[] };
 
 // ── Quick commands ─────────────────────────────────────────────────────────────
 
 type QuickCommand = {
-    label: string;
-    prompt: string;
-    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label:    string;
+    prompt:   string;
+    icon:     React.ComponentProps<typeof Ionicons>['name'];
     requires?: 'advanced' | 'professional';
-    color: string;
+    color:    string;
 };
 
 const QUICK_COMMANDS: QuickCommand[] = [
     {
-        label: "This week's schedule",
+        label:  "This week's schedule",
         prompt: "Show me a summary of this week's schedule and any open shifts.",
-        icon: 'calendar-outline',
-        color: colors.primary,
+        icon:   'calendar-outline',
+        color:  colors.primary,
     },
     {
-        label: "Who works tomorrow?",
+        label:  "Who works tomorrow?",
         prompt: "Who is scheduled to work tomorrow and what are their shift times?",
-        icon: 'people-outline',
-        color: '#10B981',
+        icon:   'people-outline',
+        color:  '#10B981',
     },
     {
-        label: "Availability check",
+        label:  "Availability check",
         prompt: "Which staff members are available next week and on which days?",
-        icon: 'checkmark-done-outline',
-        color: '#F59E0B',
+        icon:   'checkmark-done-outline',
+        color:  '#F59E0B',
     },
     {
-        label: "Generate schedule",
-        prompt: "Generate a full schedule for next week based on staff availability.",
-        icon: 'sparkles-outline',
-        color: colors.primary,
+        label:    "Generate schedule",
+        prompt:   "Generate a full schedule for next week based on staff availability.",
+        icon:     'sparkles-outline',
+        color:    colors.primary,
         requires: 'advanced',
     },
     {
-        label: "Fill open shifts",
-        prompt: "Find and assign staff to all unassigned shifts this week.",
-        icon: 'person-add-outline',
-        color: '#6366F1',
+        label:    "Fill open shifts",
+        prompt:   "Find and assign staff to all unassigned shifts this week.",
+        icon:     'person-add-outline',
+        color:    '#6366F1',
         requires: 'advanced',
     },
     {
-        label: "Predict busy days",
-        prompt: "Based on historical data, which days next week will be busiest and how many staff do I need?",
-        icon: 'analytics-outline',
-        color: '#EF4444',
+        label:    "Predict busy days",
+        prompt:   "Based on historical data, which days next week will be busiest and how many staff do I need?",
+        icon:     'analytics-outline',
+        color:    '#EF4444',
         requires: 'advanced',
     },
 ];
@@ -107,7 +107,7 @@ const QUICK_COMMANDS: QuickCommand[] = [
 
 function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString('en-CA', {
-        hour: '2-digit',
+        hour:   '2-digit',
         minute: '2-digit',
         hour12: true,
     });
@@ -115,7 +115,7 @@ function formatTime(iso: string): string {
 
 function formatMsgTime(date: Date): string {
     return date.toLocaleTimeString('en-CA', {
-        hour: '2-digit',
+        hour:   '2-digit',
         minute: '2-digit',
         hour12: true,
     });
@@ -154,10 +154,10 @@ function TypingIndicator() {
                     <Animated.View
                         key={i}
                         style={[typingStyles.dot, {
-                            opacity: dot,
+                            opacity:   dot,
                             transform: [{
                                 translateY: dot.interpolate({
-                                    inputRange: [0, 1],
+                                    inputRange:  [0, 1],
                                     outputRange: [0, -4],
                                 }),
                             }],
@@ -170,21 +170,21 @@ function TypingIndicator() {
 }
 
 const typingStyles = StyleSheet.create({
-    wrap: { alignItems: 'flex-start', marginVertical: 4, marginHorizontal: 16 },
+    wrap:   { alignItems: 'flex-start', marginVertical: 4, marginHorizontal: 16 },
     bubble: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-        backgroundColor: '#F3F4F6',
-        borderRadius: 18,
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               5,
+        backgroundColor:   '#F3F4F6',
+        borderRadius:      18,
         borderBottomLeftRadius: 4,
         paddingHorizontal: 16,
-        paddingVertical: 14,
+        paddingVertical:   14,
     },
     dot: {
-        width: 7,
-        height: 7,
-        borderRadius: 4,
+        width:           7,
+        height:          7,
+        borderRadius:    4,
         backgroundColor: colors.gray,
     },
 });
@@ -204,15 +204,15 @@ function PlanBadge({ plan }: { plan: 'advanced' | 'professional' }) {
 
 const badgeStyles = StyleSheet.create({
     wrap: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 3,
-        backgroundColor: colors.primary + '15',
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               3,
+        backgroundColor:   colors.primary + '15',
         paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 999,
-        alignSelf: 'flex-start',
-        marginTop: 4,
+        paddingVertical:   2,
+        borderRadius:      999,
+        alignSelf:         'flex-start',
+        marginTop:         4,
     },
     text: { fontSize: 10, color: colors.primary, fontWeight: '700' },
 });
@@ -220,22 +220,30 @@ const badgeStyles = StyleSheet.create({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AIAssistantScreen({ navigation }: any) {
-    const { user } = useContext(AuthContext);
+    const { user }    = useContext(AuthContext);
     const flatListRef = useRef<FlatList>(null);
 
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [input, setInput] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
+    const [messages,      setMessages]      = useState<Message[]>([]);
+    const [input,         setInput]         = useState('');
+    const [isTyping,      setIsTyping]      = useState(false);
     const [selectedLocId, setSelectedLocId] = useState<number | null>(
         user?.primaryLocation?.id ?? null
     );
-    const [showCommands, setShowCommands] = useState(true);
+    const [showCommands,  setShowCommands]  = useState(true);
 
-    // Company plan
-    const companyPlan: string = 'free' // TODO: get from auth context when plan is stored there
+    // ✅ Real company plan from backend
+    const [companyPlan, setCompanyPlan] = useState<string>('free');
     const canWrite = companyPlan === 'advanced' || companyPlan === 'professional';
 
-    // Locations
+    useEffect(() => {
+        AdminAPI.getCompany()
+            .then(({ data }) => {
+                setCompanyPlan(data?.company?.plan ?? 'free');
+            })
+            .catch(() => {});
+    }, []);
+
+    // ── Locations ─────────────────────────────────────────────────────────────
     const { data: locData } = useQuery<MyLocationsData>(MY_LOCATIONS_QUERY, {
         fetchPolicy: 'cache-and-network',
     });
@@ -247,31 +255,31 @@ export default function AIAssistantScreen({ navigation }: any) {
         }
     }, [locations]);
 
-    // Welcome message
+    // ── Welcome message ───────────────────────────────────────────────────────
     useEffect(() => {
         setMessages([{
-            id: uid(),
-            role: 'assistant',
-            content: `Hi ${user?.display_name || user?.username || 'there'}! 👋\n\nI'm your AI scheduling assistant. I can help you:\n• View and understand your schedule\n• Answer questions about staff availability\n• ${canWrite ? 'Create and assign shifts for you' : 'Suggest schedules (upgrade to Advanced to auto-create shifts)'}\n\nWhat would you like to do?`,
+            id:        uid(),
+            role:      'assistant',
+            content:   `Hi ${user?.display_name || user?.username || 'there'}! 👋\n\nI'm your AI scheduling assistant. I can help you:\n• View and understand your schedule\n• Answer questions about staff availability\n• ${canWrite ? 'Create and assign shifts for you' : 'Suggest schedules (upgrade to Advanced to auto-create shifts)'}\n\nWhat would you like to do?`,
             timestamp: new Date(),
         }]);
-    }, []);
+    }, [canWrite]);
 
-    // Build conversation history for API
+    // ── Build history ─────────────────────────────────────────────────────────
     const buildHistory = useCallback((msgs: Message[]) => {
         return msgs
             .filter(m => m.role !== 'system')
             .map(m => ({ role: m.role, content: m.content }));
     }, []);
 
-    // Send message
+    // ── Send message ──────────────────────────────────────────────────────────
     const sendMessage = useCallback(async (text: string) => {
         if (!text.trim() || !selectedLocId) return;
 
         const userMsg: Message = {
-            id: uid(),
-            role: 'user',
-            content: text.trim(),
+            id:        uid(),
+            role:      'user',
+            content:   text.trim(),
             timestamp: new Date(),
         };
 
@@ -280,45 +288,40 @@ export default function AIAssistantScreen({ navigation }: any) {
         setIsTyping(true);
         setShowCommands(false);
 
-        // Scroll to bottom
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
 
         try {
-            const history = buildHistory([...messages, userMsg]);
-
-            const { data } = await AIAPI.chat({
-                message: text.trim(),
+            const history    = buildHistory([...messages, userMsg]);
+            const { data }   = await AIAPI.chat({
+                message:     text.trim(),
                 location_id: selectedLocId,
-                history: history.slice(-10), // last 10 messages for context
+                history:     history.slice(-10),
             });
 
             const assistantMsg: Message = {
-                id: uid(),
-                role: 'assistant',
-                content: data.reply,
-                timestamp: new Date(),
+                id:              uid(),
+                role:            'assistant',
+                content:         data.reply,
+                timestamp:       new Date(),
                 executed_shifts: data.executed_shifts?.length > 0
-                    ? data.executed_shifts
-                    : undefined,
+                    ? data.executed_shifts : undefined,
             };
 
             setMessages(prev => [...prev, assistantMsg]);
-
-        } catch (e: any) {
-            const errMsg: Message = {
-                id: uid(),
-                role: 'assistant',
-                content: 'Sorry, I ran into an error. Please try again.',
+        } catch {
+            setMessages(prev => [...prev, {
+                id:        uid(),
+                role:      'assistant',
+                content:   'Sorry, I ran into an error. Please try again.',
                 timestamp: new Date(),
-            };
-            setMessages(prev => [...prev, errMsg]);
+            }]);
         } finally {
             setIsTyping(false);
             setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
         }
     }, [messages, selectedLocId, buildHistory]);
 
-    // Handle quick command
+    // ── Handle quick command ──────────────────────────────────────────────────
     const handleCommand = (cmd: QuickCommand) => {
         if (cmd.requires && !canWrite) {
             Alert.alert(
@@ -326,10 +329,7 @@ export default function AIAssistantScreen({ navigation }: any) {
                 `"${cmd.label}" requires the ${cmd.requires} plan. Upgrade to unlock AI-powered scheduling actions.`,
                 [
                     { text: 'Maybe later', style: 'cancel' },
-                    {
-                        text: 'Upgrade',
-                        onPress: () => navigation.navigate('AdminDashboard'),
-                    },
+                    { text: 'OK' },
                 ]
             );
             return;
@@ -337,7 +337,7 @@ export default function AIAssistantScreen({ navigation }: any) {
         sendMessage(cmd.prompt);
     };
 
-    // Clear chat
+    // ── Clear chat ────────────────────────────────────────────────────────────
     const handleClear = () => {
         Alert.alert('Clear Chat', 'Start a new conversation?', [
             { text: 'Cancel', style: 'cancel' },
@@ -345,9 +345,9 @@ export default function AIAssistantScreen({ navigation }: any) {
                 text: 'Clear',
                 onPress: () => {
                     setMessages([{
-                        id: uid(),
-                        role: 'assistant',
-                        content: 'Chat cleared. How can I help you?',
+                        id:        uid(),
+                        role:      'assistant',
+                        content:   'Chat cleared. How can I help you?',
                         timestamp: new Date(),
                     }]);
                     setShowCommands(true);
@@ -356,22 +356,19 @@ export default function AIAssistantScreen({ navigation }: any) {
         ]);
     };
 
-    // Render message
+    // ── Render message ────────────────────────────────────────────────────────
     const renderMessage = ({ item }: { item: Message }) => {
         const isUser = item.role === 'user';
-
         return (
             <View style={[
                 msgStyles.container,
                 isUser ? msgStyles.containerUser : msgStyles.containerAI,
             ]}>
-                {/* AI avatar */}
                 {!isUser && (
                     <View style={msgStyles.aiAvatar}>
                         <Ionicons name="sparkles" size={14} color="#fff" />
                     </View>
                 )}
-
                 <View style={[
                     msgStyles.bubble,
                     isUser ? msgStyles.bubbleUser : msgStyles.bubbleAI,
@@ -439,17 +436,15 @@ export default function AIAssistantScreen({ navigation }: any) {
                 <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={22} color={colors.text} />
                 </Pressable>
-
                 <View style={styles.headerCenter}>
                     <View style={styles.aiDot} />
                     <Text style={styles.headerTitle}>AI Assistant</Text>
+                    {/* ✅ Real plan badge */}
                     <View style={[
                         styles.planPill,
-                        {
-                            backgroundColor: canWrite
-                                ? colors.success + '20'
-                                : colors.warning + '20'
-                        },
+                        { backgroundColor: canWrite
+                            ? colors.success + '20'
+                            : colors.warning + '20' },
                     ]}>
                         <Text style={[
                             styles.planPillText,
@@ -459,7 +454,6 @@ export default function AIAssistantScreen({ navigation }: any) {
                         </Text>
                     </View>
                 </View>
-
                 <Pressable onPress={handleClear} style={styles.clearBtn}>
                     <Ionicons name="trash-outline" size={20} color={colors.gray} />
                 </Pressable>
@@ -559,7 +553,6 @@ export default function AIAssistantScreen({ navigation }: any) {
                             <Ionicons name="apps-outline" size={22} color={colors.gray} />
                         </Pressable>
                     )}
-
                     <TextInput
                         style={styles.input}
                         value={input}
@@ -571,7 +564,6 @@ export default function AIAssistantScreen({ navigation }: any) {
                         returnKeyType="send"
                         onSubmitEditing={() => sendMessage(input)}
                     />
-
                     <Pressable
                         style={[
                             styles.sendBtn,
@@ -596,85 +588,54 @@ export default function AIAssistantScreen({ navigation }: any) {
 
 const msgStyles = StyleSheet.create({
     container: {
-        flexDirection: 'row',
-        marginVertical: 4,
+        flexDirection:    'row',
+        marginVertical:   4,
         marginHorizontal: 16,
-        gap: 8,
+        gap:              8,
     },
-    containerUser: { justifyContent: 'flex-end' },
-    containerAI: { justifyContent: 'flex-start' },
+    containerUser: { justifyContent: 'flex-end'  },
+    containerAI:   { justifyContent: 'flex-start' },
 
     aiAvatar: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
+        width:          28,
+        height:         28,
+        borderRadius:   14,
         backgroundColor: colors.primary,
-        alignItems: 'center',
+        alignItems:     'center',
         justifyContent: 'center',
-        marginTop: 4,
-        flexShrink: 0,
+        marginTop:      4,
+        flexShrink:     0,
     },
+    bubble:     { maxWidth: '78%', borderRadius: 18, padding: 12 },
+    bubbleUser: { backgroundColor: colors.primary, borderBottomRightRadius: 4 },
+    bubbleAI:   { backgroundColor: '#F3F4F6',      borderBottomLeftRadius:  4 },
 
-    bubble: {
-        maxWidth: '78%',
-        borderRadius: 18,
-        padding: 12,
-    },
-    bubbleUser: {
-        backgroundColor: colors.primary,
-        borderBottomRightRadius: 4,
-    },
-    bubbleAI: {
-        backgroundColor: '#F3F4F6',
-        borderBottomLeftRadius: 4,
-    },
+    text:     { fontSize: 14, lineHeight: 20 },
+    textUser: { color: '#fff'       },
+    textAI:   { color: colors.text  },
 
-    text: { fontSize: 14, lineHeight: 20 },
-    textUser: { color: '#fff' },
-    textAI: { color: colors.text },
-
-    time: { fontSize: 10, marginTop: 4 },
+    time:     { fontSize: 10, marginTop: 4 },
     timeUser: { color: 'rgba(255,255,255,0.6)', textAlign: 'right' },
-    timeAI: { color: colors.gray },
+    timeAI:   { color: colors.gray },
 
-    // Executed shifts card
     shiftsCard: {
-        marginTop: 10,
+        marginTop:       10,
         backgroundColor: '#fff',
-        borderRadius: 10,
-        padding: 10,
-        borderWidth: 1,
-        borderColor: colors.success + '30',
-        gap: 6,
+        borderRadius:    10,
+        padding:         10,
+        borderWidth:     1,
+        borderColor:     colors.success + '30',
+        gap:             6,
     },
-    shiftsHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        marginBottom: 2,
-    },
-    shiftsTitle: { fontSize: 12, fontWeight: '700', color: colors.success },
-    shiftRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 8,
-    },
-    shiftText: { fontSize: 12, color: colors.text, flex: 1 },
-    draftBadge: {
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-        backgroundColor: colors.warning + '20',
-    },
-    draftBadgeText: { fontSize: 9, color: colors.warning, fontWeight: '800' },
-    moreShifts: { fontSize: 11, color: colors.gray, fontStyle: 'italic' },
+    shiftsHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+    shiftsTitle:  { fontSize: 12, fontWeight: '700', color: colors.success },
+    shiftRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    shiftText:    { fontSize: 12, color: colors.text, flex: 1 },
+    draftBadge:   { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: colors.warning + '20' },
+    draftBadgeText:  { fontSize: 9, color: colors.warning, fontWeight: '800' },
+    moreShifts:      { fontSize: 11, color: colors.gray, fontStyle: 'italic' },
     viewScheduleBtn: { marginTop: 4 },
-    viewScheduleBtnText: {
-        fontSize: 12,
-        color: colors.primary,
-        fontWeight: '700',
-    },
+    viewScheduleBtnText: { fontSize: 12, color: colors.primary, fontWeight: '700' },
 });
 
 // ── Screen styles ─────────────────────────────────────────────────────────────
@@ -683,155 +644,130 @@ const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: '#F8F8FC' },
 
     header: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexDirection:     'row',
+        alignItems:        'center',
         paddingHorizontal: 16,
-        paddingVertical: 12,
-        backgroundColor: '#fff',
+        paddingVertical:   12,
+        backgroundColor:   '#fff',
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        gap: 8,
+        gap:               8,
     },
-    backBtn: { padding: 4 },
-    headerCenter: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-    },
+    backBtn:      { padding: 4 },
+    headerCenter: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
     aiDot: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+        width:           8,
+        height:          8,
+        borderRadius:    4,
         backgroundColor: colors.success,
-        shadowColor: colors.success,
-        shadowOpacity: 0.6,
-        shadowRadius: 4,
+        shadowColor:     colors.success,
+        shadowOpacity:   0.6,
+        shadowRadius:    4,
     },
     headerTitle: { fontSize: 17, fontWeight: '700', color: colors.text },
-    planPill: {
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 999,
-    },
-    planPillText: { fontSize: 11, fontWeight: '700' },
-    clearBtn: { padding: 4 },
+    planPill:    { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+    planPillText:{ fontSize: 11, fontWeight: '700' },
+    clearBtn:    { padding: 4 },
 
-    // Location row
     locRow: {
-        flexDirection: 'row',
-        gap: 8,
+        flexDirection:     'row',
+        gap:               8,
         paddingHorizontal: 16,
-        paddingVertical: 10,
-        backgroundColor: '#fff',
+        paddingVertical:   10,
+        backgroundColor:   '#fff',
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
     },
     locChip: {
         paddingHorizontal: 14,
-        paddingVertical: 6,
-        borderRadius: 999,
-        borderWidth: 1,
-        borderColor: colors.inputBorder,
-        backgroundColor: '#FAFAFA',
+        paddingVertical:    6,
+        borderRadius:      999,
+        borderWidth:       1,
+        borderColor:       colors.inputBorder,
+        backgroundColor:   '#FAFAFA',
     },
-    locChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    locChipText: { fontSize: 13, color: colors.text, fontWeight: '600' },
+    locChipActive:     { backgroundColor: colors.primary, borderColor: colors.primary },
+    locChipText:       { fontSize: 13, color: colors.text,  fontWeight: '600' },
     locChipTextActive: { color: '#fff' },
 
-    // Messages
     messageList: { paddingVertical: 16, paddingBottom: 8 },
 
-    // Quick commands
     commandsSection: {
-        backgroundColor: '#fff',
-        borderTopWidth: 1,
-        borderTopColor: '#F0F0F0',
+        backgroundColor:   '#fff',
+        borderTopWidth:    1,
+        borderTopColor:    '#F0F0F0',
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingVertical:   12,
     },
     commandsLabel: {
-        fontSize: 11,
-        fontWeight: '700',
-        color: colors.gray,
+        fontSize:      11,
+        fontWeight:    '700',
+        color:         colors.gray,
         textTransform: 'uppercase',
         letterSpacing: 0.8,
-        marginBottom: 10,
+        marginBottom:  10,
     },
-    commandsGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-    },
+    commandsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     commandBtn: {
-        width: '30%',
+        width:           '30%',
         backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 10,
-        borderWidth: 1,
-        borderColor: '#EFEFEF',
-        alignItems: 'flex-start',
-        gap: 6,
-        minHeight: 90,
+        borderRadius:    12,
+        padding:         10,
+        borderWidth:     1,
+        borderColor:     '#EFEFEF',
+        alignItems:      'flex-start',
+        gap:             6,
+        minHeight:       90,
     },
-    commandBtnLocked: {
-        backgroundColor: '#FAFAFA',
-        borderColor: '#EFEFEF',
-    },
+    commandBtnLocked:  { backgroundColor: '#FAFAFA', borderColor: '#EFEFEF' },
     commandIconWrap: {
-        width: 34,
-        height: 34,
-        borderRadius: 10,
-        alignItems: 'center',
+        width:          34,
+        height:         34,
+        borderRadius:   10,
+        alignItems:     'center',
         justifyContent: 'center',
     },
-    commandLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: colors.text,
-        lineHeight: 15,
-    },
+    commandLabel: { fontSize: 11, fontWeight: '600', color: colors.text, lineHeight: 15 },
 
-    // Input bar
     inputBar: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: 8,
+        flexDirection:     'row',
+        alignItems:        'flex-end',
+        gap:               8,
         paddingHorizontal: 16,
-        paddingVertical: 10,
-        paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-        backgroundColor: '#fff',
-        borderTopWidth: 1,
-        borderTopColor: '#F0F0F0',
+        paddingVertical:   10,
+        paddingBottom:     Platform.OS === 'ios' ? 24 : 10,
+        backgroundColor:   '#fff',
+        borderTopWidth:    1,
+        borderTopColor:    '#F0F0F0',
     },
     commandsToggle: { padding: 4, paddingBottom: 8 },
     input: {
-        flex: 1,
-        borderWidth: 1,
-        borderColor: colors.inputBorder,
-        borderRadius: 20,
+        flex:              1,
+        borderWidth:       1,
+        borderColor:       colors.inputBorder,
+        borderRadius:      20,
         paddingHorizontal: 16,
-        paddingVertical: 10,
-        fontSize: 14,
-        color: colors.text,
-        backgroundColor: '#FAFAFA',
-        maxHeight: 100,
+        paddingVertical:   10,
+        fontSize:          14,
+        color:             colors.text,
+        backgroundColor:   '#FAFAFA',
+        maxHeight:         100,
     },
     sendBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width:           40,
+        height:          40,
+        borderRadius:    20,
         backgroundColor: colors.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: colors.primary,
-        shadowOpacity: 0.3,
-        shadowRadius: 6,
-        elevation: 3,
+        alignItems:      'center',
+        justifyContent:  'center',
+        shadowColor:     colors.primary,
+        shadowOpacity:   0.3,
+        shadowRadius:    6,
+        elevation:       3,
     },
     sendBtnDisabled: {
         backgroundColor: colors.inputBorder,
-        shadowOpacity: 0,
-        elevation: 0,
+        shadowOpacity:   0,
+        elevation:       0,
     },
 });

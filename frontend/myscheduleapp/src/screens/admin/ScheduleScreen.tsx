@@ -79,8 +79,9 @@ function formatDayNum(date: Date): string {
 }
 
 function formatTime(iso: string): string {
-    const d = new Date(iso);
-    return d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return new Date(iso).toLocaleTimeString('en-CA', {
+        hour: '2-digit', minute: '2-digit', hour12: true,
+    });
 }
 
 function formatWeekRange(start: Date): string {
@@ -101,8 +102,15 @@ function isToday(date: Date): boolean {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function ScheduleScreen({ navigation }: any) {
+export default function ScheduleScreen({ navigation, route }: any) {
     const { user } = useContext(AuthContext);
+
+    // ✅ Read-only mode when opened from employee home screen
+    const readOnly = route?.params?.readOnly ?? false;
+    const isManager = ['owner', 'manager', 'supervisor'].includes(
+        (user?.role?.name ?? '').toLowerCase()
+    );
+    const canEdit = isManager && !readOnly;
 
     const [weekStart,          setWeekStart]          = useState<Date>(() => getWeekStart(new Date()));
     const [shifts,             setShifts]             = useState<ShiftDetail[]>([]);
@@ -110,7 +118,9 @@ export default function ScheduleScreen({ navigation }: any) {
     const [loading,            setLoading]            = useState(false);
     const [refreshing,         setRefreshing]         = useState(false);
     const [publishing,         setPublishing]         = useState(false);
-    const [selectedLocationId, setSelectedLocationId] = useState<number | null>(null);
+    const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
+        route?.params?.locationId ?? null
+    );
     const [showLocationPicker, setShowLocationPicker] = useState(false);
 
     // ── Locations ─────────────────────────────────────────────────────────────
@@ -132,10 +142,10 @@ export default function ScheduleScreen({ navigation }: any) {
     const fetchData = useCallback(async (loc: number, ws: Date) => {
         setLoading(true);
         try {
-            const weekStr       = formatDate(ws);
+            const weekStr            = formatDate(ws);
             const [shiftsRes, costRes] = await Promise.all([
                 ShiftsAPI.list(loc, weekStr),
-                ShiftsAPI.laborCost(loc, weekStr),
+                canEdit ? ShiftsAPI.laborCost(loc, weekStr) : Promise.resolve({ data: null }),
             ]);
             setShifts(shiftsRes.data?.shifts ?? []);
             setLaborCost(costRes.data ?? null);
@@ -144,7 +154,7 @@ export default function ScheduleScreen({ navigation }: any) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [canEdit]);
 
     useEffect(() => {
         if (selectedLocationId) fetchData(selectedLocationId, weekStart);
@@ -179,10 +189,10 @@ export default function ScheduleScreen({ navigation }: any) {
         return map;
     }, [shifts, weekDays]);
 
-    // ── Draft count ───────────────────────────────────────────────────────────
+    // ── Draft count (managers only) ───────────────────────────────────────────
     const draftCount = useMemo(
-        () => shifts.filter(s => s.status === 'draft').length,
-        [shifts]
+        () => canEdit ? shifts.filter(s => s.status === 'draft').length : 0,
+        [shifts, canEdit]
     );
 
     // ── Publish ───────────────────────────────────────────────────────────────
@@ -226,7 +236,9 @@ export default function ScheduleScreen({ navigation }: any) {
                 <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={22} color={colors.text} />
                 </Pressable>
-                <Text style={styles.screenTitle}>Schedule</Text>
+                <Text style={styles.screenTitle}>
+                    {canEdit ? 'Schedule' : 'My Schedule'}
+                </Text>
                 <Pressable onPress={goToday} style={styles.todayBtn}>
                     <Text style={styles.todayBtnText}>Today</Text>
                 </Pressable>
@@ -262,7 +274,9 @@ export default function ScheduleScreen({ navigation }: any) {
                         >
                             <Text style={[
                                 styles.locationOptionText,
-                                loc.id === selectedLocationId && { color: colors.primary, fontWeight: '700' },
+                                loc.id === selectedLocationId && {
+                                    color: colors.primary, fontWeight: '700',
+                                },
                             ]}>
                                 {loc.name}
                             </Text>
@@ -285,8 +299,8 @@ export default function ScheduleScreen({ navigation }: any) {
                 </Pressable>
             </View>
 
-            {/* Labor cost banner */}
-            {laborCost && laborCost.total_shifts > 0 && (
+            {/* ✅ Labor cost banner — managers only */}
+            {canEdit && laborCost && laborCost.total_shifts > 0 && (
                 <View style={styles.laborBanner}>
                     <LaborItem value={String(laborCost.total_shifts)} label="shifts" />
                     <View style={styles.laborDivider} />
@@ -315,7 +329,7 @@ export default function ScheduleScreen({ navigation }: any) {
             ) : (
                 <ScrollView
                     style={styles.scroll}
-                    contentContainerStyle={{ paddingBottom: 120 }}
+                    contentContainerStyle={{ paddingBottom: canEdit ? 120 : 32 }}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                     }
@@ -348,27 +362,33 @@ export default function ScheduleScreen({ navigation }: any) {
                                             : 'No shifts'}
                                     </Text>
 
-                                    {/* Single + button — only add option */}
-                                    <Pressable
-                                        style={styles.addShiftBtn}
-                                        onPress={() => navigation.navigate('CreateShift', {
-                                            locationId: selectedLocationId,
-                                            date:       key,
-                                        })}
-                                    >
-                                        <Ionicons name="add" size={18} color={colors.primary} />
-                                    </Pressable>
+                                    {/* ✅ + button — managers only */}
+                                    {canEdit && (
+                                        <Pressable
+                                            style={styles.addShiftBtn}
+                                            onPress={() => navigation.navigate('CreateShift', {
+                                                locationId: selectedLocationId,
+                                                date:       key,
+                                            })}
+                                        >
+                                            <Ionicons name="add" size={18} color={colors.primary} />
+                                        </Pressable>
+                                    )}
                                 </View>
 
-                                {/* Shift cards — nothing shown for empty days (no redundant button) */}
+                                {/* Shift cards */}
                                 {dayShifts.map(shift => (
                                     <ShiftCard
                                         key={shift.shift_id}
                                         shift={shift}
-                                        onPress={() => navigation.navigate('ShiftDetail', {
-                                            shiftId:    shift.shift_id,
-                                            locationId: selectedLocationId,
-                                        })}
+                                        canEdit={canEdit}
+                                        onPress={() => canEdit
+                                            ? navigation.navigate('ShiftDetail', {
+                                                shiftId:    shift.shift_id,
+                                                locationId: selectedLocationId,
+                                            })
+                                            : undefined
+                                        }
                                     />
                                 ))}
                             </View>
@@ -377,52 +397,48 @@ export default function ScheduleScreen({ navigation }: any) {
                 </ScrollView>
             )}
 
-            {/* Bottom action bar */}
-            <View style={styles.bottomBar}>
-                <Pressable
-                    style={styles.createBtn}
-                    onPress={() => navigation.navigate('CreateShift', {
-                        locationId: selectedLocationId,
-                        date:       formatDate(new Date()),
-                    })}
-                >
-                    <Ionicons name="add" size={18} color={colors.primary} />
-                    <Text style={styles.createBtnText}>Create Shift</Text>
-                </Pressable>
-
-                {draftCount > 0 && (
+            {/* ✅ Bottom action bar — managers only */}
+            {canEdit && (
+                <View style={styles.bottomBar}>
                     <Pressable
-                        style={[styles.publishBtn, publishing && { opacity: 0.6 }]}
-                        onPress={handlePublish}
-                        disabled={publishing}
+                        style={styles.createBtn}
+                        onPress={() => navigation.navigate('CreateShift', {
+                            locationId: selectedLocationId,
+                            date:       formatDate(new Date()),
+                        })}
                     >
-                        {publishing ? (
-                            <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                            <>
-                                <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                                <Text style={styles.publishBtnText}>
-                                    Publish {draftCount} Draft{draftCount > 1 ? 's' : ''}
-                                </Text>
-                            </>
-                        )}
+                        <Ionicons name="add" size={18} color={colors.primary} />
+                        <Text style={styles.createBtnText}>Create Shift</Text>
                     </Pressable>
-                )}
-            </View>
+
+                    {draftCount > 0 && (
+                        <Pressable
+                            style={[styles.publishBtn, publishing && { opacity: 0.6 }]}
+                            onPress={handlePublish}
+                            disabled={publishing}
+                        >
+                            {publishing ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <>
+                                    <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                                    <Text style={styles.publishBtnText}>
+                                        Publish {draftCount} Draft{draftCount > 1 ? 's' : ''}
+                                    </Text>
+                                </>
+                            )}
+                        </Pressable>
+                    )}
+                </View>
+            )}
         </SafeAreaView>
     );
 }
 
-// ── LaborItem sub-component ───────────────────────────────────────────────────
+// ── LaborItem ─────────────────────────────────────────────────────────────────
 
-function LaborItem({
-    value,
-    label,
-    valueColor,
-}: {
-    value:       string;
-    label:       string;
-    valueColor?: string;
+function LaborItem({ value, label, valueColor }: {
+    value: string; label: string; valueColor?: string;
 }) {
     return (
         <View style={laborStyles.item}>
@@ -440,14 +456,12 @@ const laborStyles = StyleSheet.create({
     label: { fontSize: 11, color: colors.gray, marginTop: 1 },
 });
 
-// ── ShiftCard sub-component ───────────────────────────────────────────────────
+// ── ShiftCard ─────────────────────────────────────────────────────────────────
 
-function ShiftCard({
-    shift,
-    onPress,
-}: {
+function ShiftCard({ shift, onPress, canEdit }: {
     shift:   ShiftDetail;
     onPress: () => void;
+    canEdit: boolean;
 }) {
     const isDraft     = shift.status === 'draft';
     const isPublished = shift.status === 'published';
@@ -465,10 +479,11 @@ function ShiftCard({
             style={({ pressed }) => [
                 styles.shiftCard,
                 { borderLeftColor: statusColor },
-                pressed      && { opacity: 0.85 },
-                isCancelled  && { opacity: 0.5 },
+                pressed && canEdit && { opacity: 0.85 },
+                isCancelled      && { opacity: 0.5  },
             ]}
             onPress={onPress}
+            disabled={!canEdit}
         >
             <View style={styles.shiftCardTop}>
                 <Text style={styles.shiftTime}>
@@ -517,7 +532,6 @@ function ShiftCard({
 const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
 
-    // Top bar
     topBar: {
         flexDirection:     'row',
         alignItems:        'center',
@@ -538,7 +552,6 @@ const styles = StyleSheet.create({
     },
     todayBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
 
-    // Location bar
     locationBar: {
         flexDirection:     'row',
         alignItems:        'center',
@@ -549,7 +562,7 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#E8E8F0',
     },
-    locationName: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
+    locationName:     { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
     locationDropdown: {
         backgroundColor:   '#fff',
         borderBottomWidth: 1,
@@ -568,10 +581,9 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#F5F5F5',
     },
-    locationOptionActive:  { backgroundColor: colors.subtleAccent },
-    locationOptionText:    { fontSize: 14, color: colors.text },
+    locationOptionActive: { backgroundColor: colors.subtleAccent },
+    locationOptionText:   { fontSize: 14, color: colors.text },
 
-    // Week nav
     weekNav: {
         flexDirection:     'row',
         alignItems:        'center',
@@ -585,7 +597,6 @@ const styles = StyleSheet.create({
     weekNavBtn: { padding: 8 },
     weekLabel:  { fontSize: 13, fontWeight: '700', color: colors.text },
 
-    // Labor banner
     laborBanner: {
         flexDirection:     'row',
         alignItems:        'center',
@@ -597,15 +608,13 @@ const styles = StyleSheet.create({
     },
     laborDivider: { width: 1, height: 24, backgroundColor: '#E0E0E0' },
 
-    // Scroll
     scroll:           { flex: 1 },
     loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
     loadingText:      { fontSize: 13, color: colors.gray },
 
-    // Day block — compact: marginTop reduced, no emptyDay button
     dayBlock: {
         marginHorizontal: 16,
-        marginTop:        10,   // ✅ reduced from 16 — more compact
+        marginTop:        10,
         borderRadius:     12,
         overflow:         'hidden',
         borderWidth:      1,
@@ -629,12 +638,12 @@ const styles = StyleSheet.create({
         borderRadius:    8,
         backgroundColor: '#F3F4F6',
     },
-    dayBadgeToday:  { backgroundColor: colors.primary },
-    dayShort:       { fontSize: 9,  fontWeight: '700', color: colors.gray  },
-    dayShortToday:  { color: '#fff' },
-    dayNum:         { fontSize: 15, fontWeight: '800', color: colors.text  },
-    dayNumToday:    { color: '#fff' },
-    shiftCount:     { flex: 1, fontSize: 12, color: colors.gray },
+    dayBadgeToday: { backgroundColor: colors.primary },
+    dayShort:      { fontSize: 9,  fontWeight: '700', color: colors.gray },
+    dayShortToday: { color: '#fff' },
+    dayNum:        { fontSize: 15, fontWeight: '800', color: colors.text },
+    dayNumToday:   { color: '#fff' },
+    shiftCount:    { flex: 1, fontSize: 12, color: colors.gray },
     addShiftBtn: {
         width:           30,
         height:          30,
@@ -644,7 +653,6 @@ const styles = StyleSheet.create({
         justifyContent:  'center',
     },
 
-    // Shift card
     shiftCard: {
         margin:          8,
         padding:         10,
@@ -663,7 +671,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom:   5,
     },
-    shiftTime:    { fontSize: 13, fontWeight: '700', color: colors.text },
+    shiftTime:  { fontSize: 13, fontWeight: '700', color: colors.text },
     statusBadge: {
         flexDirection:     'row',
         alignItems:        'center',
@@ -672,26 +680,12 @@ const styles = StyleSheet.create({
         paddingVertical:   2,
         borderRadius:      999,
     },
-    statusText:  { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-    shiftCardBottom: {
-        flexDirection: 'row',
-        flexWrap:      'wrap',
-        gap:           8,
-    },
-    shiftMeta: {
-        flexDirection: 'row',
-        alignItems:    'center',
-        gap:           3,
-    },
+    statusText:      { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+    shiftCardBottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    shiftMeta: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     shiftMetaText: { fontSize: 11, color: colors.gray },
-    shiftNotes: {
-        marginTop: 4,
-        fontSize:  11,
-        color:     colors.gray,
-        fontStyle: 'italic',
-    },
+    shiftNotes: { marginTop: 4, fontSize: 11, color: colors.gray, fontStyle: 'italic' },
 
-    // Bottom bar
     bottomBar: {
         position:          'absolute',
         bottom:            0,
@@ -722,7 +716,7 @@ const styles = StyleSheet.create({
         borderColor:     colors.primary,
         backgroundColor: '#fff',
     },
-    createBtnText:  { fontSize: 13, fontWeight: '700', color: colors.primary },
+    createBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
     publishBtn: {
         flex:            1,
         flexDirection:   'row',

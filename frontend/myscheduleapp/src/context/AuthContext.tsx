@@ -8,54 +8,62 @@ import React, {
     useState,
 } from 'react';
 import { apolloClient } from '../graphql/client';
-import { ME_QUERY } from '../graphql/operations';
+import { ME_QUERY }     from '../graphql/operations';
 import {
     setTokens,
     clearTokens,
     getAccessToken,
     getRefreshToken,
 } from '../utils/secureStore';
+import {
+    storeTokenSecurely,
+    clearStoredCredentials,
+    isBiometricAvailable,
+    isBiometricEnabled,
+} from '../utils/biometrics';
 import { AuthAPI } from '../api/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type Role = {
-    id: number;
-    name: string;
+    id:       number;
+    name:     string;
     isSystem: boolean;
 };
 
 export type AuthUser = {
-    id: number;
-    username: string;
-    display_name?: string | null;
-    user_email?: string;
-    isActive: boolean;
-    role: Role;
+    id:               number;
+    username:         string;
+    display_name?:    string | null;
+    user_email?:      string;
+    isActive:         boolean;
+    role:             Role;
     primaryLocation?: { id: number; name: string } | null;
 };
 
 type AuthContextType = {
-    ready: boolean;
+    ready:           boolean;
     isAuthenticated: boolean;
-    user: AuthUser | null;
-    login: (email: string, password: string) => Promise<void>;
-    logout: () => Promise<void>;
-    setUser: React.Dispatch<React.SetStateAction<AuthUser | null>>;
+    user:            AuthUser | null;
+    login:           (email: string, password: string) => Promise<void>;
+    logout:          () => Promise<void>;
+    restoreSession:  (token: string, user: AuthUser) => void;
+    setUser:         React.Dispatch<React.SetStateAction<AuthUser | null>>;
 };
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
 export const AuthContext = createContext<AuthContextType>({
-    ready: false,
+    ready:           false,
     isAuthenticated: false,
-    user: null,
-    login: async () => {},
-    logout: async () => {},
-    setUser: () => {},
+    user:            null,
+    login:           async () => {},
+    logout:          async () => {},
+    restoreSession:  () => {},
+    setUser:         () => {},
 });
 
-// ── Helper: promise with timeout ──────────────────────────────────────────────
+// ── Helper ────────────────────────────────────────────────────────────────────
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
     return Promise.race([
@@ -69,15 +77,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-    const [ready, setReady]                     = useState(false);
+    const [ready,           setReady]           = useState(false);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
-    const [user, setUser]                       = useState<AuthUser | null>(null);
+    const [user,            setUser]            = useState<AuthUser | null>(null);
     const mountedRef                            = useRef(true);
 
+    // ── Boot — restore session ────────────────────────────────────────────────
     useEffect(() => {
         mountedRef.current = true;
 
-        const restoreSession = async () => {
+        const bootSession = async () => {
             try {
                 const [at, rt] = await Promise.all([
                     getAccessToken(),
@@ -86,68 +95,68 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
                 if (!mountedRef.current) return;
 
-                // No tokens stored — show login screen immediately
+                // No tokens — show login
                 if (!at || !rt) {
                     setReady(true);
                     return;
                 }
 
-                // Try GraphQL first (8 second timeout)
+                // ✅ Check if biometrics available AND enabled by user
+                const bioAvailable = await isBiometricAvailable();
+                const bioEnabled   = await isBiometricEnabled();
+
+                if (bioAvailable && bioEnabled) {
+                    // Require biometric gate — show LoginScreen
+                    // LoginScreen auto-prompts biometric on mount
+                    if (mountedRef.current) setReady(true);
+                    return;
+                }
+
+                // No biometrics / disabled — auto-restore session silently
+
+                // Try GraphQL first (8s timeout)
                 try {
-                    const { data } = await withTimeout(
-                        apolloClient.query({ query: ME_QUERY, fetchPolicy: 'network-only' }),
+                    const result = await withTimeout(
+                        apolloClient.query<{ me: AuthUser }>({
+                            query:       ME_QUERY,
+                            fetchPolicy: 'network-only',
+                        }),
                         8000
                     );
 
                     if (!mountedRef.current) return;
 
-                    if (data?.me) {
-                        setUser(data.me as AuthUser);
+                    if (result.data?.me) {
+                        setUser(result.data.me as AuthUser);
                         setIsAuthenticated(true);
                         setReady(true);
                         return;
                     }
                 } catch (gqlErr) {
-                    console.log('[AuthContext] GraphQL session restore failed, trying REST:', gqlErr);
+                    console.log('[AuthContext] GraphQL restore failed, trying REST:', gqlErr);
                 }
 
                 if (!mountedRef.current) return;
 
-                // Fallback: REST /auth/me (5 second timeout)
+                // Fallback REST (5s timeout)
                 try {
-                    const { data: meData } = await withTimeout(
-                        AuthAPI.me(),
-                        5000
-                    );
+                    const { data: meData } = await withTimeout(AuthAPI.me(), 5000);
 
                     if (!mountedRef.current) return;
 
                     if (meData?.user_id) {
-                        setUser({
-                            id:           meData.user_id,
-                            username:     meData.username    ?? '',
-                            display_name: meData.display_name ?? null,
-                            user_email:   meData.user_email   ?? '',
-                            isActive:     true,
-                            role: {
-                                id:       0,
-                                name:     meData.role     ?? 'staff',
-                                isSystem: false,
-                            },
-                            primaryLocation: meData.location_id
-                                ? { id: meData.location_id, name: '' }
-                                : null,
-                        });
+                        setUser(_buildUser(meData));
                         setIsAuthenticated(true);
                         setReady(true);
                         return;
                     }
                 } catch (restErr) {
-                    console.log('[AuthContext] REST session restore failed:', restErr);
+                    console.log('[AuthContext] REST restore failed:', restErr);
                 }
 
-                // Both failed — clear tokens and show login
+                // Both failed — clear and show login
                 await clearTokens();
+                await clearStoredCredentials();
                 if (mountedRef.current) {
                     setIsAuthenticated(false);
                     setReady(true);
@@ -156,6 +165,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
             } catch (err) {
                 console.log('[AuthContext] Unexpected error:', err);
                 await clearTokens();
+                await clearStoredCredentials();
                 if (mountedRef.current) {
                     setIsAuthenticated(false);
                     setReady(true);
@@ -163,14 +173,11 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
             }
         };
 
-        restoreSession();
-
-        return () => {
-            mountedRef.current = false;
-        };
+        bootSession();
+        return () => { mountedRef.current = false; };
     }, []);
 
-    // ── Login via REST ────────────────────────────────────────────────────────
+    // ── Login ─────────────────────────────────────────────────────────────────
     const login = useCallback(async (email: string, password: string) => {
         const { data } = await AuthAPI.login(email.trim().toLowerCase(), password);
 
@@ -180,23 +187,18 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
 
         await setTokens(data.access_token, data.refresh_token);
 
-        // Build user from REST response (no GraphQL needed at login time)
-        const u = data.user;
-        setUser({
-            id:           u.user_id,
-            username:     u.username     ?? '',
-            display_name: u.display_name ?? null,
-            user_email:   u.user_email   ?? '',
-            isActive:     true,
-            role: {
-                id:       0,
-                name:     u.role ?? 'staff',
-                isSystem: false,
-            },
-            primaryLocation: u.location_id
-                ? { id: u.location_id, name: '' }
-                : null,
-        });
+        const loggedInUser = _buildUser(data.user);
+
+        // Store user + token securely for biometric access
+        await storeTokenSecurely(data.access_token, loggedInUser);
+
+        setUser(loggedInUser);
+        setIsAuthenticated(true);
+    }, []);
+
+    // ── Restore session — called after biometric success ──────────────────────
+    const restoreSession = useCallback((token: string, restoredUser: AuthUser) => {
+        setUser(restoredUser);
         setIsAuthenticated(true);
     }, []);
 
@@ -204,17 +206,17 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     const logout = useCallback(async () => {
         try { await AuthAPI.logout(); } catch { /* ignore */ }
         await clearTokens();
+        await clearStoredCredentials();
         setIsAuthenticated(false);
         setUser(null);
         try { await apolloClient.clearStore(); } catch { /* ignore */ }
     }, []);
 
     const value = useMemo(
-        () => ({ ready, isAuthenticated, user, login, logout, setUser }),
-        [ready, isAuthenticated, user, login, logout],
+        () => ({ ready, isAuthenticated, user, login, logout, restoreSession, setUser }),
+        [ready, isAuthenticated, user, login, logout, restoreSession],
     );
 
-    // Show nothing while restoring session (very brief — max 8s then always resolves)
     if (!ready) return null;
 
     return (
@@ -223,3 +225,23 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
         </AuthContext.Provider>
     );
 };
+
+// ── Helper ────────────────────────────────────────────────────────────────────
+
+function _buildUser(u: any): AuthUser {
+    return {
+        id:           u.user_id      ?? u.id ?? 0,
+        username:     u.username     ?? '',
+        display_name: u.display_name ?? null,
+        user_email:   u.user_email   ?? '',
+        isActive:     true,
+        role: {
+            id:       0,
+            name:     u.role         ?? 'staff',
+            isSystem: false,
+        },
+        primaryLocation: u.location_id
+            ? { id: u.location_id, name: '' }
+            : null,
+    };
+}

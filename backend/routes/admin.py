@@ -14,6 +14,12 @@ def list_locations():
     return admin.list_locations()
 
 
+@admin_bp.put("/locations/<int:loc_id>")
+@jwt_required()
+def update_location(loc_id: int):
+    return admin.update_location(loc_id)
+
+
 # ── Company ───────────────────────────────────────────────────────────────────
 @admin_bp.get("/company")
 @jwt_required()

@@ -74,3 +74,8 @@ def update_settings():
 @jwt_required()
 def generate_pin():
     return ctrl.generate_pin()
+
+@router.get("/team-status")
+@jwt_required()
+def get_team_status():
+    return ctrl.get_team_status()
