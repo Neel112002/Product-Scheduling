@@ -154,7 +154,7 @@ class TimeEntryController:
         
     def get_team_status(self):
         from datetime import datetime, timezone, timedelta
-        from models import Shift, ShiftAssignment, Employment, AppUser
+        from models import Shift, ShiftAssignment, Employment, AppUser, TimeEntry
 
         user_id     = int(get_jwt_identity())
         location_id = request.args.get("location_id", type=int)
@@ -212,7 +212,7 @@ class TimeEntryController:
                 shift_start = today_shift.start_time
                 if shift_start.tzinfo is None:
                     shift_start = shift_start.replace(tzinfo=timezone.utc)
-                status = "late" if now > shift_start + timedelta(minutes=10) else "scheduled"
+                status = "late" if now > shift_start + timedelta(minutes=15) else "scheduled"
 
             name     = user.display_name or user.username
             initials = "".join(p[0] for p in name.strip().split()[:2]).upper()

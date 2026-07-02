@@ -158,27 +158,97 @@ export const ShiftsAPI = {
 
     laborCost: (location_id: number, week_start: string, hourly_rate?: number) =>
         api.get('/shifts/labor-cost', { params: { location_id, week_start, hourly_rate } }),
+
+    rolesWithStaff: (location_id: number) =>
+        api.get('/shifts/roles-with-staff', { params: { location_id } }),
+
+    bulkWeek: (body: {
+        location_id: number;
+        week_start: string;
+        rows: {
+            role_id: number | null;
+            user_id: number;
+            start_time: string;
+            end_time: string;
+            days: number[];
+            break_minutes?: number;
+        }[];
+    }) => api.post('/shifts/bulk-week', body),
 };
 
 // ── Swaps API ──────────────────────────────────────────────────────────────────
 export const SwapsAPI = {
-    request: (shift_id: number, reason?: string) =>
-        api.post('/swaps/', { shift_id, reason }),
+    // Create
+    requestOpen: (shift_id: number, reason?: string) =>
+        api.post('/swaps/open', { shift_id, reason }),
 
-    mySwaps: () =>
-        api.get('/swaps/'),
+    requestTargeted: (body: {
+        shift_id: number;
+        receiving_user_id: number;
+        offered_shift_id: number;
+        reason?: string;
+    }) => api.post('/swaps/targeted', body),
 
-    pending: (location_id: number) =>
-        api.get('/swaps/pending', { params: { location_id } }),
+    // Offer flow
+    makeOffer: (swap_id: number, offered_shift_id: number) =>
+        api.post(`/swaps/${swap_id}/offer`, { offered_shift_id }),
 
+    retractOffer: (swap_id: number) =>
+        api.post(`/swaps/${swap_id}/retract`),
+
+    // Accept / reject / cancel
     accept: (swap_id: number) =>
         api.post(`/swaps/${swap_id}/accept`),
 
     reject: (swap_id: number) =>
         api.post(`/swaps/${swap_id}/reject`),
 
-    approve: (swap_id: number, approve: boolean) =>
-        api.post(`/swaps/${swap_id}/approve`, { approve }),
+    cancel: (swap_id: number) =>
+        api.post(`/swaps/${swap_id}/cancel`),
+
+    // Lists
+    mySwaps: () =>
+        api.get('/swaps/mine'),
+
+    incoming: () =>
+        api.get('/swaps/incoming'),
+
+    marketplace: (location_id?: number) =>
+        api.get('/swaps/marketplace', { params: { location_id } }),
+
+    myShiftsForOffer: () =>
+        api.get('/swaps/my-shifts'),
+
+    colleagues: () =>
+        api.get('/swaps/colleagues'),
+
+    colleagueShifts: (colleague_id: number) =>
+        api.get(`/swaps/colleague-shifts/${colleague_id}`),
+
+    // Manager
+    pendingManager: (location_id: number) =>
+        api.get('/swaps/pending-manager', { params: { location_id } }),
+
+    managerDecide: (swap_id: number, approve: boolean) =>
+        api.post(`/swaps/${swap_id}/decide`, { approve }),
+};
+
+// ── Drops API ──────────────────────────────────────────────────────────────────
+export const DropsAPI = {
+    request: (shift_id: number, reason?: string) =>
+        api.post('/drops/', { shift_id, reason }),
+
+    myDrops: () =>
+        api.get('/drops/mine'),
+
+    cancel: (drop_id: number) =>
+        api.post(`/drops/${drop_id}/cancel`),
+
+    pendingDrops: (location_id: number) =>
+        api.get('/drops/pending', { params: { location_id } }),
+
+    decide: (drop_id: number, approve: boolean) =>
+        api.post(`/drops/${drop_id}/decide`, { approve }),
 };
 
 // ── Notifications API ──────────────────────────────────────────────────────────
@@ -195,12 +265,18 @@ export const NotificationsAPI = {
 
 // ── Availability API ───────────────────────────────────────────────────────────
 export const AvailabilityAPI = {
+    getMine: () =>
+        api.get('/availability/'),
+
     create: (body: {
         emp_id: number;
         day_of_week: string;
         start_time: string;
         end_time: string;
     }) => api.post('/availability/', body),
+
+    delete: (availability_id: number) =>
+        api.delete(`/availability/${availability_id}`),
 };
 
 // ── AI API ─────────────────────────────────────────────────────────────────────
@@ -224,7 +300,7 @@ export const AIAPI = {
         api.post('/ai/swap-recommendations', { swap_id, location_id }),
 };
 
-// ── Time Entry API ────────────────────────────────────────────────────────────
+// ── Time Entry API ─────────────────────────────────────────────────────────────
 export const TimeEntryAPI = {
     getActive: () =>
         api.get('/time-entries/active'),
@@ -273,9 +349,32 @@ export const TimeEntryAPI = {
         api.post('/time-entries/settings/generate-pin'),
 };
 
+// ── Analytics API ──────────────────────────────────────────────────────────────
 export const AnalyticsAPI = {
     get: (location_id: number, period: 'day' | 'week' | 'month', start_date?: string) =>
         api.get('/admin/analytics/', {
             params: { location_id, period, start_date },
         }),
+};
+
+// ── Time Off API ───────────────────────────────────────────────────────────────
+export const TimeOffAPI = {
+    create: (body: {
+        start_date: string;
+        end_date: string;
+        request_type: 'vacation' | 'sick' | 'personal' | 'other';
+        reason?: string;
+    }) => api.post('/time-off/', body),
+
+    myRequests: () =>
+        api.get('/time-off/mine'),
+
+    cancel: (request_id: number) =>
+        api.post(`/time-off/${request_id}/cancel`),
+
+    pending: () =>
+        api.get('/time-off/pending'),
+
+    decide: (request_id: number, approve: boolean, manager_notes?: string) =>
+        api.post(`/time-off/${request_id}/decide`, { approve, manager_notes }),
 };

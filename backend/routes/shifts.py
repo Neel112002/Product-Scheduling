@@ -21,6 +21,11 @@ def my_shifts():
 def labor_cost():
     return ctrl.labor_cost()
 
+@router.get("/roles-with-staff")
+@jwt_required()
+def roles_with_staff():
+    return ctrl.roles_with_staff()
+
 @router.get("/<int:shift_id>")
 @jwt_required()
 def get_shift(shift_id):
@@ -30,6 +35,11 @@ def get_shift(shift_id):
 @jwt_required()
 def create_shift():
     return ctrl.create_shift()
+
+@router.post("/bulk-week")
+@jwt_required()
+def bulk_create_week():
+    return ctrl.bulk_create_week()
 
 @router.put("/<int:shift_id>")
 @jwt_required()

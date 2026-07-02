@@ -14,18 +14,30 @@ class AdminController:
             user    = AppUser.query.get(user_id)
             if not user:
                 return jsonify({"locations": []}), 200
+
+            active_emps = [e for e in user.employments if e.status == "active"]
+            if not active_emps:
+                return jsonify({"locations": []}), 200
+
             admin_emps = [
-                e for e in user.employments
-                if e.status == "active" and e.role
-                and e.role.name.lower() in ("owner", "manager", "supervisor")
+                e for e in active_emps
+                if e.role and e.role.name.lower() in ("owner", "manager", "supervisor")
             ]
-            if not admin_emps:
-                return jsonify({"error": "Forbidden"}), 403
-            locations = (
-                Location.query
-                .filter_by(comp_id=admin_emps[0].comp_id)
-                .order_by(Location.loc_name.asc()).all()
-            )
+
+            if admin_emps:
+                # Admins see all locations for their company
+                locations = (
+                    Location.query
+                    .filter_by(comp_id=admin_emps[0].comp_id)
+                    .order_by(Location.loc_name.asc()).all()
+                )
+            else:
+                # Regular employees see only their own location
+                location_ids = {e.location_id for e in active_emps if e.location_id}
+                locations = Location.query.filter(
+                    Location.loc_id.in_(location_ids)
+                ).order_by(Location.loc_name.asc()).all()
+
             return jsonify({
                 "locations": [
                     {

@@ -239,9 +239,21 @@ export default function ScheduleScreen({ navigation, route }: any) {
                 <Text style={styles.screenTitle}>
                     {canEdit ? 'Schedule' : 'My Schedule'}
                 </Text>
-                <Pressable onPress={goToday} style={styles.todayBtn}>
-                    <Text style={styles.todayBtnText}>Today</Text>
-                </Pressable>
+                {canEdit ? (
+                    <Pressable
+                        onPress={() => navigation.navigate('WeekSchedule', {
+                            locationId: selectedLocationId,
+                        })}
+                        style={styles.bulkBtn}
+                    >
+                        <Ionicons name="grid-outline" size={14} color="#fff" />
+                        <Text style={styles.bulkBtnText}>Bulk</Text>
+                    </Pressable>
+                ) : (
+                    <Pressable onPress={goToday} style={styles.todayBtn}>
+                        <Text style={styles.todayBtnText}>Today</Text>
+                    </Pressable>
+                )}
             </View>
 
             {/* Location picker */}
@@ -551,6 +563,17 @@ const styles = StyleSheet.create({
         borderColor:       colors.primary,
     },
     todayBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
+
+    bulkBtn: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               4,
+        paddingHorizontal: 12,
+        paddingVertical:    6,
+        borderRadius:      999,
+        backgroundColor:   colors.primary,
+    },
+    bulkBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' },
 
     locationBar: {
         flexDirection:     'row',

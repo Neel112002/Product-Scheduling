@@ -178,7 +178,7 @@ class Shift(db.Model):
     location     = db.relationship("Location",        back_populates="shifts")
     role         = db.relationship("Role")
     assignments  = db.relationship("ShiftAssignment", back_populates="shift", cascade="all, delete-orphan")
-    swaps        = db.relationship("ShiftSwap",       back_populates="shift", cascade="all, delete-orphan")
+    swaps        = db.relationship("ShiftSwap", back_populates="shift", cascade="all, delete-orphan", foreign_keys="[ShiftSwap.shift_id]")
     time_entries = db.relationship("TimeEntry",       back_populates="shift", cascade="all, delete-orphan")
 
     __table_args__ = (
@@ -211,6 +211,8 @@ class ShiftSwap(db.Model):
     shift_id           = db.Column(BigInteger, db.ForeignKey("shift.shift_id",   ondelete="CASCADE"), nullable=False)
     requesting_user_id = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), nullable=False)
     receiving_user_id  = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), nullable=True)
+    offered_shift_id   = db.Column(BigInteger, db.ForeignKey("shift.shift_id",   ondelete="SET NULL"), nullable=True)
+    swap_type          = db.Column(Text, nullable=False, default="open")  # open | targeted
     reason             = db.Column(Text, nullable=True)
     status             = db.Column(Text, nullable=False, default="pending")
     manager_approved   = db.Column(Boolean, nullable=True)
@@ -218,14 +220,19 @@ class ShiftSwap(db.Model):
     created_at         = db.Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at         = db.Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    shift           = db.relationship("Shift",   back_populates="swaps")
+    shift           = db.relationship("Shift", back_populates="swaps",      foreign_keys=[shift_id])
+    offered_shift   = db.relationship("Shift",                              foreign_keys=[offered_shift_id])
     requesting_user = db.relationship("AppUser", foreign_keys=[requesting_user_id])
     receiving_user  = db.relationship("AppUser", foreign_keys=[receiving_user_id])
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending','accepted','rejected','approved','cancelled')",
+            "status IN ('pending','offer_pending','accepted','rejected','approved','cancelled')",
             name="ck_swap_status",
+        ),
+        CheckConstraint(
+            "swap_type IN ('open','targeted')",
+            name="ck_swap_type",
         ),
     )
 
@@ -341,3 +348,57 @@ class EmailVerificationToken(db.Model):
     used_at    = db.Column(DateTime, nullable=True)
 
     user = db.relationship("AppUser", backref=db.backref("email_verification_tokens", lazy="dynamic"))
+    
+    
+# ── 18. ShiftDrop ─────────────────────────────────────────────────────────────
+class ShiftDrop(db.Model):
+    __tablename__ = "shift_drop"
+
+    drop_id    = db.Column(BigInteger, primary_key=True)
+    shift_id   = db.Column(BigInteger, db.ForeignKey("shift.shift_id",   ondelete="CASCADE"), nullable=False)
+    user_id    = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), nullable=False)
+    reason     = db.Column(Text, nullable=True)
+    status     = db.Column(Text, nullable=False, default="pending")
+    created_at = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    shift = db.relationship("Shift")
+    user  = db.relationship("AppUser")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','approved','rejected','cancelled')",
+            name="ck_drop_status",
+        ),
+    )
+    
+    
+# ── 19. TimeOffRequest ────────────────────────────────────────────────────────
+class TimeOffRequest(db.Model):
+    __tablename__ = "time_off_request"
+
+    request_id    = db.Column(BigInteger, primary_key=True)
+    user_id       = db.Column(BigInteger, db.ForeignKey("app_user.user_id", ondelete="CASCADE"), nullable=False)
+    comp_id       = db.Column(BigInteger, db.ForeignKey("company.comp_id",  ondelete="CASCADE"), nullable=False)
+    start_date    = db.Column(Date, nullable=False)
+    end_date      = db.Column(Date, nullable=False)
+    request_type  = db.Column(Text, nullable=False, default="vacation")
+    reason        = db.Column(Text, nullable=True)
+    status        = db.Column(Text, nullable=False, default="pending")
+    manager_notes = db.Column(Text, nullable=True)
+    created_at    = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at    = db.Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user    = db.relationship("AppUser")
+    company = db.relationship("Company")
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','approved','rejected','cancelled')",
+            name="ck_timeoff_status",
+        ),
+        CheckConstraint(
+            "request_type IN ('vacation','sick','personal','other')",
+            name="ck_timeoff_type",
+        ),
+    )

@@ -10,10 +10,12 @@ import SwapShiftScreen from '../screens/SwapShiftScreen';
 import MySwapsScreen from '../screens/MySwapsScreen';
 import ClockInScreen from '../screens/ClockInScreen';
 import TimesheetScreen from '../screens/TimesheetScreen';
+import TeamStatusScreen from '../screens/TeamStatusScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
 import TeamRolesScreen from '../screens/admin/TeamRolesScreen';
 import ScheduleScreen from '../screens/admin/ScheduleScreen';
+import WeekScheduleScreen from '../screens/admin/WeekScheduleScreen';
 import CreateShiftScreen from '../screens/admin/CreateShiftScreen';
 import ShiftDetailScreen from '../screens/admin/ShiftDetailScreen';
 import ClockManagementScreen from '../screens/admin/ClockManagementScreen';
@@ -22,6 +24,10 @@ import AIAssistantScreen from '../screens/admin/AIAssistantScreen';
 import CompleteProfileScreen from '../screens/CompleteProfileScreen';
 import EmployeeProfileScreen from '../screens/admin/EmployeeProfileScreen';
 import AnalyticsScreen from '../screens/admin/AnalyticsScreen';
+import AvailabilityScreen from '../screens/AvailabilityScreen';
+import TimeOffScreen from '../screens/TimeOffScreen';
+import AdminRequestsScreen from '../screens/admin/AdminRequestsScreen';
+
 
 // ── Param list ────────────────────────────────────────────────────────────────
 export type AppStackParamList = {
@@ -33,12 +39,16 @@ export type AppStackParamList = {
     MySwaps: undefined;
     ClockIn: undefined;
     Timesheet: undefined;
+    TeamStatus: { locationId?: number | null };
+    Availability: undefined;
+    TimeOff: undefined;
 
     // Admin
     AdminDashboard: undefined;
     InviteStaff: undefined;
     TeamRoles: undefined;
     Schedule: { locationId?: number | null };
+    WeekSchedule: { locationId?: number | null };
     CreateShift: { locationId: number; date: string };
     ShiftDetail: { shiftId: number; locationId: number };
     ClockManagement: { locationId: number };
@@ -46,6 +56,8 @@ export type AppStackParamList = {
     AIAssistant: undefined;
     EmployeeProfile: { userId: number; locationId: number };
     Analytics: { locationId?: number };
+    AdminRequests: { locationId?: number };
+
 
     // Shared
     CompleteProfile: undefined;
@@ -68,7 +80,7 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                 animation: 'slide_from_right',
             }}
         >
-            {/* ── Employee screens ─────────────────────────────────────── */}
+            {/* ── Employee screens ──────────────────────────────────────── */}
             <Stack.Screen
                 name="Dashboard"
                 component={HomeScreen}
@@ -104,6 +116,11 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                 component={TimesheetScreen}
                 options={{ headerShown: false }}
             />
+            <Stack.Screen
+                name="TeamStatus"
+                component={TeamStatusScreen}
+                options={{ headerShown: false }}
+            />
 
             {/* ── Admin screens ─────────────────────────────────────────── */}
             <Stack.Screen
@@ -124,6 +141,11 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             <Stack.Screen
                 name="Schedule"
                 component={ScheduleScreen}
+                options={{ headerShown: false }}
+            />
+            <Stack.Screen
+                name="WeekSchedule"
+                component={WeekScheduleScreen}
                 options={{ headerShown: false }}
             />
             <Stack.Screen
@@ -162,16 +184,32 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                 component={CompleteProfileScreen}
                 options={{ title: 'Complete your profile' }}
             />
-
             <Stack.Screen
                 name="EmployeeProfile"
                 component={EmployeeProfileScreen}
                 options={{ headerShown: false }}
             />
-
             <Stack.Screen
                 name="Analytics"
                 component={AnalyticsScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="Availability"
+                component={AvailabilityScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="TimeOff"
+                component={TimeOffScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="AdminRequests"
+                component={AdminRequestsScreen}
                 options={{ headerShown: false }}
             />
         </Stack.Navigator>

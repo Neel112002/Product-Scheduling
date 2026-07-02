@@ -31,8 +31,10 @@ def create_app():
     from routes.swaps         import router as swaps_router
     from routes.notifications import router as notifications_router
     from routes.ai            import router as ai_router
-    from routes.time_entries import router as time_entries_router
-    from routes.analytics import analytics_bp
+    from routes.time_entries  import router as time_entries_router
+    from routes.analytics     import analytics_bp
+    from routes.drops         import drops_bp
+    from routes.time_off import time_off_bp
     
     app.register_blueprint(auth_router)
     app.register_blueprint(onboarding_router)
@@ -44,6 +46,8 @@ def create_app():
     app.register_blueprint(ai_router)
     app.register_blueprint(time_entries_router)
     app.register_blueprint(analytics_bp)
+    app.register_blueprint(drops_bp)
+    app.register_blueprint(time_off_bp)
     
     # GraphQL
     from gql_server.graphql_server import register_graphql_route
@@ -52,8 +56,6 @@ def create_app():
     # WebSockets
     from routes.sockets import register_socket_handlers
     register_socket_handlers()
-
-    
 
     @app.get("/ping")
     def ping():

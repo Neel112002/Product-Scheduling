@@ -158,6 +158,195 @@ class ShiftService:
         emit_shift_updated(shift.location_id, shift_id, "unassigned")
         return True
 
+    # ── Bulk week-wise create ─────────────────────────────────────────────────
+    def bulk_create_week(self, *, caller_user_id, location_id, week_start, rows):
+        """
+        Create shifts across a week from role-grouped rows.
+
+        rows: list of dicts, each:
+          {
+            "role_id":     int | None,
+            "user_id":     int,
+            "start_time":  "HH:MM",
+            "end_time":    "HH:MM",
+            "days":        [0..6]   # 0=Monday ... 6=Sunday
+            "break_minutes": int (optional)
+          }
+        """
+        self._assert_manager(caller_user_id, location_id)
+
+        try:
+            monday = datetime.strptime(week_start, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("week_start must be YYYY-MM-DD")
+        monday = monday - timedelta(days=monday.weekday())
+        monday = monday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        week_end = monday + timedelta(days=7)
+        time_off_map = self._approved_timeoff_map(location_id, monday, week_end)
+
+        created = []
+        skipped = []
+
+        for idx, row in enumerate(rows):
+            try:
+                user_id  = int(row["user_id"])
+                days     = row.get("days", [])
+                st_str   = row["start_time"]
+                et_str   = row["end_time"]
+                role_id  = row.get("role_id")
+                brk      = int(row.get("break_minutes", 0))
+            except (KeyError, ValueError, TypeError):
+                skipped.append({"index": idx, "reason": "Missing or invalid fields"})
+                continue
+
+            if not days:
+                skipped.append({"index": idx, "reason": "No days selected"})
+                continue
+
+            emp = Employment.query.filter_by(
+                user_id=user_id, location_id=location_id, status="active"
+            ).first()
+            if not emp:
+                skipped.append({"index": idx, "reason": "Employee not active at this location"})
+                continue
+
+            try:
+                sh, sm = [int(x) for x in st_str.split(":")]
+                eh, em = [int(x) for x in et_str.split(":")]
+            except (ValueError, AttributeError):
+                skipped.append({"index": idx, "reason": "Invalid time format"})
+                continue
+
+            for day in days:
+                if day < 0 or day > 6:
+                    continue
+                day_date   = monday + timedelta(days=day)
+                start_time = day_date.replace(hour=sh, minute=sm)
+                end_time   = day_date.replace(hour=eh, minute=em)
+
+                # Overnight shift support: end before start → next day
+                if end_time <= start_time:
+                    end_time += timedelta(days=1)
+
+                # Conflict: approved time off
+                if self._is_on_timeoff(time_off_map, user_id, day_date.date()):
+                    skipped.append({
+                        "index": idx, "user_id": user_id,
+                        "day": day_date.strftime("%a %b %d"),
+                        "reason": "Employee has approved time off",
+                    })
+                    continue
+
+                # Conflict: overlapping existing shift for this employee
+                if self._has_overlap(user_id, start_time, end_time):
+                    skipped.append({
+                        "index": idx, "user_id": user_id,
+                        "day": day_date.strftime("%a %b %d"),
+                        "reason": "Overlaps an existing shift",
+                    })
+                    continue
+
+                shift = Shift(
+                    location_id=location_id,
+                    role_id=role_id,
+                    start_time=start_time,
+                    end_time=end_time,
+                    break_minutes=brk,
+                    status="draft",
+                    created_by=caller_user_id,
+                )
+                db.session.add(shift)
+                db.session.flush()  # get shift_id
+
+                db.session.add(ShiftAssignment(
+                    shift_id=shift.shift_id,
+                    user_id=user_id,
+                    assigned_by=caller_user_id,
+                ))
+                created.append(shift.shift_id)
+
+        db.session.commit()
+
+        return {
+            "created_count": len(created),
+            "created_ids":   created,
+            "skipped":       skipped,
+        }
+
+    def _approved_timeoff_map(self, location_id, start, end):
+        """Returns {user_id: [(start_date, end_date), ...]} for approved time off overlapping the window."""
+        try:
+            from models import TimeOffRequest
+        except ImportError:
+            return {}
+        reqs = TimeOffRequest.query.filter(
+            TimeOffRequest.status == "approved",
+            TimeOffRequest.start_date < end.date(),
+            TimeOffRequest.end_date >= start.date(),
+        ).all()
+        result = {}
+        for r in reqs:
+            result.setdefault(r.user_id, []).append((r.start_date, r.end_date))
+        return result
+
+    @staticmethod
+    def _is_on_timeoff(time_off_map, user_id, day_date):
+        for (s, e) in time_off_map.get(user_id, []):
+            if s <= day_date <= e:
+                return True
+        return False
+
+    @staticmethod
+    def _has_overlap(user_id, start_time, end_time):
+        existing = (
+            db.session.query(Shift)
+            .join(ShiftAssignment, ShiftAssignment.shift_id == Shift.shift_id)
+            .filter(
+                ShiftAssignment.user_id == user_id,
+                Shift.status.in_(["draft", "published"]),
+                Shift.start_time < end_time,
+                Shift.end_time > start_time,
+            )
+            .first()
+        )
+        return existing is not None
+
+    # ── Roles with assignable staff (for week-wise UI) ────────────────────────
+    def roles_with_staff(self, *, caller_user_id, location_id):
+        self._assert_member(caller_user_id, location_id)
+
+        roles = Role.query.filter_by(location_id=location_id).order_by(Role.name.asc()).all()
+        emps  = Employment.query.filter_by(location_id=location_id, status="active").all()
+
+        by_role = {}
+        for e in emps:
+            if not e.user:
+                continue
+            by_role.setdefault(e.role_id, []).append({
+                "user_id": e.user.user_id,
+                "name":    e.user.display_name or e.user.username,
+                "role":    e.role.name if e.role else None,
+            })
+
+        result = []
+        for role in roles:
+            result.append({
+                "role_id":   role.role_id,
+                "role_name": role.name,
+                "employees": by_role.get(role.role_id, []),
+            })
+
+        no_role = by_role.get(None, [])
+        if no_role:
+            result.append({
+                "role_id":   None,
+                "role_name": "Unassigned",
+                "employees": no_role,
+            })
+
+        return result
+
     # ── Publish ───────────────────────────────────────────────────────────────
     def publish_week(self, *, caller_user_id, location_id, week_start):
         self._assert_manager(caller_user_id, location_id)

@@ -57,9 +57,14 @@ type ShiftStatus =
     | 'yet_to_start'
     | 'window_open'
     | 'late'
+    | 'missed'
     | 'working'
     | 'on_break'
     | 'shift_ended';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const CLOCK_WINDOW_MINS = 15; // must match backend timedelta(minutes=15)
 
 // ── Day/Night helper ──────────────────────────────────────────────────────────
 
@@ -70,8 +75,8 @@ function getDayNightIcon(): {
     const hour  = new Date().getHours();
     const isDay = hour >= 6 && hour < 20;
     return isDay
-        ? { icon: 'sunny-outline',  color: '#F59E0B' }
-        : { icon: 'moon-outline',   color: '#6366F1' };
+        ? { icon: 'sunny-outline', color: '#F59E0B' }
+        : { icon: 'moon-outline',  color: '#6366F1' };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -124,19 +129,33 @@ function calcStatus(
 ): ShiftStatus {
     if (!todayShift) return 'no_shift';
 
-    const start      = new Date(todayShift.start_time);
-    const end        = new Date(todayShift.end_time);
-    const windowOpen = new Date(start.getTime() - 10 * 60000);
-    const lateAt     = new Date(start.getTime() +  5 * 60000);
+    const start       = new Date(todayShift.start_time);
+    const end         = new Date(todayShift.end_time);
+    const windowOpen  = new Date(start.getTime() - CLOCK_WINDOW_MINS * 60000);
+    const windowClose = new Date(start.getTime() + CLOCK_WINDOW_MINS * 60000);
+    const lateAt      = new Date(start.getTime() + 5 * 60000);
 
+    // Already clocked in
     if (activeEntry?.is_active) {
         if (activeEntry.is_on_break) return 'on_break';
         return 'working';
     }
 
-    if (now > end)       return 'shift_ended';
-    if (now >= lateAt)   return 'late';
+    // Shift has ended
+    if (now > end) {
+        // If they never clocked in → missed
+        return activeEntry ? 'shift_ended' : 'missed';
+    }
+
+    // Clock-in window has closed (past start + 15 min) — too late to self-clock-in
+    if (now > windowClose) return 'late';
+
+    // Within ±15 min window
     if (now >= windowOpen) return 'window_open';
+
+    // Upcoming but close (show late-ish warning after shift start + 5min)
+    if (now >= lateAt) return 'late';
+
     return 'yet_to_start';
 }
 
@@ -220,6 +239,11 @@ export default function TodayShiftStatusCard({
                     <Text style={styles.statusSub}>
                         {formatTime(todayShift!.start_time)} – {formatTime(todayShift!.end_time)}
                     </Text>
+                    <Text style={[styles.statusSub, { color: colors.success, marginTop: 2 }]}>
+                        Window closes in {getCountdown(
+                            new Date(new Date(todayShift!.start_time).getTime() + CLOCK_WINDOW_MINS * 60000).toISOString()
+                        ) || 'soon'}
+                    </Text>
                 </View>
                 <Pressable
                     style={[styles.actionBtn, { backgroundColor: colors.success }]}
@@ -231,7 +255,7 @@ export default function TodayShiftStatusCard({
         );
     }
 
-    // ── Late ──────────────────────────────────────────────────────────────────
+    // ── Late — window passed, manager must clock in ───────────────────────────
     if (status === 'late') {
         const minsLate = getMinsLate(todayShift!.start_time);
         return (
@@ -241,18 +265,42 @@ export default function TodayShiftStatusCard({
                 </View>
                 <View style={styles.textCol}>
                     <Text style={[styles.statusTitle, { color: colors.error }]}>
-                        You haven't started your shift!
+                        Clock-in window closed
                     </Text>
                     <Text style={[styles.statusSub, { color: colors.error + 'BB' }]}>
-                        {minsLate} min late · started {formatTime(todayShift!.start_time)}
+                        {minsLate} min late · shift started {formatTime(todayShift!.start_time)}
+                    </Text>
+                    <Text style={[styles.statusSub, { marginTop: 4, fontWeight: '600' }]}>
+                        Contact your manager to clock you in
                     </Text>
                 </View>
-                <Pressable
-                    style={[styles.actionBtn, { backgroundColor: colors.error }]}
-                    onPress={onClockIn}
-                >
-                    <Text style={styles.actionBtnText}>Clock In</Text>
-                </Pressable>
+                {/* Disabled red button — no onPress */}
+                <View style={[styles.actionBtn, styles.actionBtnDisabled]}>
+                    <Ionicons name="lock-closed-outline" size={14} color="#fff" />
+                    <Text style={styles.actionBtnText}>Locked</Text>
+                </View>
+            </View>
+        );
+    }
+
+    // ── Missed — shift ended, never clocked in ────────────────────────────────
+    if (status === 'missed') {
+        return (
+            <View style={[styles.card, styles.cardError]}>
+                <View style={[styles.iconWrap, { backgroundColor: colors.error + '20' }]}>
+                    <Ionicons name="close-circle-outline" size={22} color={colors.error} />
+                </View>
+                <View style={styles.textCol}>
+                    <Text style={[styles.statusTitle, { color: colors.error }]}>
+                        Shift missed
+                    </Text>
+                    <Text style={[styles.statusSub, { color: colors.error + 'BB' }]}>
+                        {formatTime(todayShift!.start_time)} – {formatTime(todayShift!.end_time)}
+                    </Text>
+                    <Text style={[styles.statusSub, { marginTop: 4, fontWeight: '600' }]}>
+                        Contact your manager if this is an error
+                    </Text>
+                </View>
             </View>
         );
     }
@@ -341,7 +389,7 @@ export default function TodayShiftStatusCard({
         );
     }
 
-    // ── Shift ended ───────────────────────────────────────────────────────────
+    // ── Shift ended (clocked out successfully) ────────────────────────────────
     if (status === 'shift_ended') {
         const workedMins = activeEntry?.total_minutes ?? null;
         return (
@@ -386,11 +434,11 @@ const styles = StyleSheet.create({
         gap:           10,
         marginBottom:  8,
     },
-    cardNeutral: { backgroundColor: '#F9FAFB',               borderColor: '#EFEFEF'              },
-    cardBlue:    { backgroundColor: '#6366F108',             borderColor: '#6366F130'            },
-    cardSuccess: { backgroundColor: colors.success + '08',   borderColor: colors.success + '30' },
-    cardWarning: { backgroundColor: colors.warning + '08',   borderColor: colors.warning + '30' },
-    cardError:   { backgroundColor: colors.error   + '08',   borderColor: colors.error   + '30' },
+    cardNeutral: { backgroundColor: '#F9FAFB',              borderColor: '#EFEFEF'              },
+    cardBlue:    { backgroundColor: '#6366F108',            borderColor: '#6366F130'            },
+    cardSuccess: { backgroundColor: colors.success + '08',  borderColor: colors.success + '30' },
+    cardWarning: { backgroundColor: colors.warning + '08',  borderColor: colors.warning + '30' },
+    cardError:   { backgroundColor: colors.error   + '08',  borderColor: colors.error   + '30' },
 
     iconWrap: {
         width:          42,
@@ -406,11 +454,17 @@ const styles = StyleSheet.create({
     countdown:   { fontSize: 12, fontWeight: '700', marginTop: 4 },
 
     actionBtn: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               4,
         paddingHorizontal: 14,
         paddingVertical:    8,
         borderRadius:      999,
-        alignItems:        'center',
         flexShrink:        0,
+    },
+    actionBtnDisabled: {
+        backgroundColor: colors.error,
+        opacity:         0.5,
     },
     actionBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
 

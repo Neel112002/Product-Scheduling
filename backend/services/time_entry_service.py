@@ -62,8 +62,8 @@ class TimeEntryService:
                 if shift_start.tzinfo is None:
                     shift_start = shift_start.replace(tzinfo=timezone.utc)
 
-                window_open  = shift_start - timedelta(minutes=10)
-                window_close = shift_start + timedelta(minutes=10)
+                window_open  = shift_start - timedelta(minutes=15)
+                window_close = shift_start + timedelta(minutes=15)
 
                 if now < window_open:
                     mins_until = int((window_open - now).total_seconds() / 60)
@@ -74,8 +74,8 @@ class TimeEntryService:
                     )
                 if now > window_close:
                     raise ValueError(
-                        "Clock-in window has passed. "
-                        "Please contact your manager to clock you in manually."
+                        "Clock-in window has passed (±15 min from shift start). "
+                        "Please ask your manager to clock you in manually."
                     )
 
         entry = TimeEntry(
@@ -208,8 +208,8 @@ class TimeEntryService:
                 if shift_end.tzinfo is None:
                     shift_end = shift_end.replace(tzinfo=timezone.utc)
 
-                window_open  = shift_end - timedelta(minutes=10)
-                window_close = shift_end + timedelta(minutes=10)
+                window_open  = shift_end - timedelta(minutes=15)
+                window_close = shift_end + timedelta(minutes=15)
 
                 if now < window_open:
                     mins_left = int((window_open - now).total_seconds() / 60)
@@ -220,8 +220,8 @@ class TimeEntryService:
                     )
                 if now > window_close:
                     raise ValueError(
-                        "Clock-out window has passed. "
-                        "Please contact your manager to clock you out manually."
+                        "Clock-out window has passed (±15 min from shift end). "
+                        "Please ask your manager to clock you out manually."
                     )
 
         if notes:

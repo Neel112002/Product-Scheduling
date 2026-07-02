@@ -24,7 +24,7 @@ import QuickActionsCard from '../components/home/QuickActionsCard';
 import AlertsCard, { AlertItem } from '../components/home/AlertsCard';
 import TodayShiftStatusCard from '../components/home/TodayShiftStatusCard';
 import { AuthContext } from '../context/AuthContext';
-import { ShiftsAPI, TimeEntryAPI } from '../api/api';
+import { ShiftsAPI, TimeEntryAPI, AdminAPI } from '../api/api';
 import { useNotifications } from '../hooks/useNotifications';
 import { MY_LOCATIONS_QUERY } from '../graphql/operations';
 
@@ -89,10 +89,10 @@ const STATUS_CONFIG: Record<string, { color: string; label: string }> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function startOfWeek(): string {
+function getMonday(offsetWeeks = 0): string {
     const d = new Date();
     const day = d.getDay();
-    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
+    d.setDate(d.getDate() - day + (day === 0 ? -6 : 1) + offsetWeeks * 7);
     d.setHours(0, 0, 0, 0);
     return d.toISOString().split('T')[0];
 }
@@ -105,6 +105,13 @@ function isTodayShift(iso: string): boolean {
         d.getMonth() === today.getMonth() &&
         d.getDate() === today.getDate()
     );
+}
+
+function isFutureOrTodayShift(iso: string): boolean {
+    const d = new Date(iso);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return d >= now;
 }
 
 function formatShiftTime(iso: string): string {
@@ -142,31 +149,70 @@ export default function HomeScreen({ navigation }: any) {
     const [teamStatus, setTeamStatus] = useState<TeamMemberStatus[]>([]);
     const [loadingShifts, setLoadingShifts] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [locations, setLocations] = useState<LocationOption[]>([]);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
         authUser?.primaryLocation?.id ?? null,
     );
 
-    // ── Locations ─────────────────────────────────────────────────────────────
-    const { data: locData, refetch: refetchLoc } =
-        useQuery<MyLocationsData>(MY_LOCATIONS_QUERY, {
-            fetchPolicy: 'cache-and-network',
-        });
+    // ── Locations — REST primary, GraphQL as supplement ───────────────────────
+    const fetchLocations = useCallback(async () => {
+        try {
+            const { data } = await AdminAPI.listLocations();
+            const locs: LocationOption[] = (data?.locations ?? []).map((l: any) => ({
+                id: l.id,
+                name: l.name,
+            }));
+            if (locs.length) setLocations(locs);
+        } catch {
+            // silently ignore — GraphQL fallback below
+        }
+    }, []);
 
-    const locations = locData?.myLocations ?? [];
+    useEffect(() => { fetchLocations(); }, [fetchLocations]);
+
+    // GraphQL supplement
+    const { data: gqlLocData } = useQuery<MyLocationsData>(MY_LOCATIONS_QUERY, {
+        fetchPolicy: 'cache-and-network',
+    });
 
     useEffect(() => {
-        if (locations.length && !selectedLocationId) {
-            const preferred = locations.find(l => l.id === authUser?.primaryLocation?.id);
-            setSelectedLocationId(preferred?.id ?? locations[0].id);
+        if (gqlLocData?.myLocations?.length) {
+            setLocations(gqlLocData.myLocations);
         }
-    }, [locations, selectedLocationId, authUser]);
+    }, [gqlLocData]);
 
-    // ── My shifts ─────────────────────────────────────────────────────────────
+    // Set selectedLocationId as soon as any location source resolves
+    useEffect(() => {
+        if (selectedLocationId) return;
+        const fromAuth = authUser?.primaryLocation?.id;
+        if (fromAuth) {
+            setSelectedLocationId(fromAuth);
+            return;
+        }
+        if (locations.length) {
+            setSelectedLocationId(locations[0].id);
+        }
+    }, [authUser, locations, selectedLocationId]);
+
+    // ── My shifts (this week + next week) ─────────────────────────────────────
     const fetchMyShifts = useCallback(async () => {
         setLoadingShifts(true);
         try {
-            const { data } = await ShiftsAPI.mine(startOfWeek());
-            setMyShifts(data?.shifts ?? []);
+            const [thisWeek, nextWeek] = await Promise.all([
+                ShiftsAPI.mine(getMonday(0)),
+                ShiftsAPI.mine(getMonday(1)),
+            ]);
+            const combined = [
+                ...(thisWeek.data?.shifts ?? []),
+                ...(nextWeek.data?.shifts ?? []),
+            ];
+            const seen = new Set<number>();
+            const unique = combined.filter(s => {
+                if (seen.has(s.shift_id)) return false;
+                seen.add(s.shift_id);
+                return true;
+            });
+            setMyShifts(unique);
         } catch {
             setMyShifts([]);
         } finally {
@@ -190,18 +236,24 @@ export default function HomeScreen({ navigation }: any) {
 
     useEffect(() => { fetchActiveEntry(); }, [fetchActiveEntry]);
 
-    // Refresh active entry every 60s
     useEffect(() => {
         const interval = setInterval(fetchActiveEntry, 60_000);
         return () => clearInterval(interval);
     }, [fetchActiveEntry]);
 
-    // ── Team status ───────────────────────────────────────────────────────────
+    // ── Team status — all employees with a shift today ────────────────────────
     const fetchTeamStatus = useCallback(async () => {
         if (!selectedLocationId) return;
         try {
             const { data } = await TimeEntryAPI.getTeamStatus(selectedLocationId);
-            setTeamStatus((data?.team ?? []).slice(0, 3));
+            const order: Record<string, number> = {
+                late: 0, working: 1, on_break: 2, scheduled: 3,
+            };
+            const sorted = (data?.team ?? []).sort(
+                (a: TeamMemberStatus, b: TeamMemberStatus) =>
+                    (order[a.status] ?? 4) - (order[b.status] ?? 4)
+            );
+            setTeamStatus(sorted);
         } catch {
             setTeamStatus([]);
         }
@@ -210,7 +262,7 @@ export default function HomeScreen({ navigation }: any) {
     useEffect(() => { fetchTeamStatus(); }, [fetchTeamStatus]);
 
     useEffect(() => {
-        const interval = setInterval(fetchTeamStatus, 60_000);
+        const interval = setInterval(fetchTeamStatus, 30_000);
         return () => clearInterval(interval);
     }, [fetchTeamStatus]);
 
@@ -218,13 +270,13 @@ export default function HomeScreen({ navigation }: any) {
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await Promise.all([
-            refetchLoc(),
+            fetchLocations(),
             fetchMyShifts(),
             fetchActiveEntry(),
             fetchTeamStatus(),
         ]);
         setRefreshing(false);
-    }, [refetchLoc, fetchMyShifts, fetchActiveEntry, fetchTeamStatus]);
+    }, [fetchLocations, fetchMyShifts, fetchActiveEntry, fetchTeamStatus]);
 
     // ── Derived ───────────────────────────────────────────────────────────────
     const sortedShifts = useMemo(() =>
@@ -233,17 +285,29 @@ export default function HomeScreen({ navigation }: any) {
         ), [myShifts]);
 
     const upcomingShifts = useMemo(
-        () => sortedShifts.filter(s => !isTodayShift(s.start_time)),
+        () => sortedShifts.filter(s =>
+            !isTodayShift(s.start_time) && isFutureOrTodayShift(s.start_time)
+        ),
         [sortedShifts]
     );
 
+    const thisWeekShifts = useMemo(() => {
+        const monday = new Date(getMonday(0));
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        return myShifts.filter(s => {
+            const d = new Date(s.start_time);
+            return d >= monday && d <= sunday;
+        });
+    }, [myShifts]);
+
     const hoursThisWeek = useMemo(() => {
-        const total = myShifts.reduce((acc, s) => {
+        const total = thisWeekShifts.reduce((acc, s) => {
             const diff = new Date(s.end_time).getTime() - new Date(s.start_time).getTime();
             return acc + (diff / 3600000) - (s.break_minutes / 60);
         }, 0);
         return Math.round(total * 10) / 10;
-    }, [myShifts]);
+    }, [thisWeekShifts]);
 
     const displayName = authUser?.display_name || authUser?.username || 'Employee';
     const initials = displayName.trim().split(/\s+/).map((p: string) => p[0]).join('').slice(0, 2).toUpperCase();
@@ -315,7 +379,7 @@ export default function HomeScreen({ navigation }: any) {
                 {/* Stats bar */}
                 <View style={styles.statsBar}>
                     <View style={styles.statItem}>
-                        <Text style={styles.statValue}>{myShifts.length}</Text>
+                        <Text style={styles.statValue}>{thisWeekShifts.length}</Text>
                         <Text style={styles.statLabel}>shifts this week</Text>
                     </View>
                     <View style={styles.statDivider} />
@@ -332,7 +396,7 @@ export default function HomeScreen({ navigation }: any) {
                     </View>
                 </View>
 
-                {/* ── Today's shift status card ── */}
+                {/* Today's shift status card */}
                 <View style={styles.shiftStatusSection}>
                     <Text style={styles.sectionLabel}>TODAY</Text>
                     <TodayShiftStatusCard
@@ -351,30 +415,43 @@ export default function HomeScreen({ navigation }: any) {
                     <View style={styles.shiftsCard}>
                         <View style={styles.shiftsCardHeader}>
                             <Text style={styles.shiftsCardTitle}>My Shifts</Text>
-                            <Pressable
-                                style={styles.calendarBtn}
-                                onPress={() => navigation.navigate('Schedule', {
-                                    locationId: selectedLocationId,
-                                    readOnly: true,
-                                })}
-                            >
-                                <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                            </Pressable>
+                            <View style={styles.shiftsCardActions}>
+                                {upcomingShifts.length > 0 && (
+                                    <View style={styles.shiftCountBadge}>
+                                        <Text style={styles.shiftCountText}>
+                                            {upcomingShifts.length}
+                                        </Text>
+                                    </View>
+                                )}
+                                <Pressable
+                                    style={styles.calendarBtn}
+                                    onPress={() => navigation.navigate('Schedule', {
+                                        locationId: selectedLocationId,
+                                        readOnly: true,
+                                    })}
+                                >
+                                    <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                                </Pressable>
+                            </View>
                         </View>
 
                         {upcomingShifts.length > 0 ? (
                             <>
                                 <Text style={styles.shiftGroupLabel}>UPCOMING</Text>
-                                {upcomingShifts.map(s => (
-                                    <ShiftRow key={s.shift_id} shift={s} />
-                                ))}
+                                <ScrollView
+                                    style={styles.shiftsScroll}
+                                    showsVerticalScrollIndicator={false}
+                                    nestedScrollEnabled={true}
+                                >
+                                    {upcomingShifts.map(s => (
+                                        <ShiftRow key={s.shift_id} shift={s} />
+                                    ))}
+                                </ScrollView>
                             </>
                         ) : (
                             <View style={styles.emptyShifts}>
                                 <Ionicons name="calendar-outline" size={24} color={colors.inputBorder} />
-                                <Text style={styles.emptyShiftsText}>
-                                    No upcoming shifts this week
-                                </Text>
+                                <Text style={styles.emptyShiftsText}>No upcoming shifts</Text>
                             </View>
                         )}
                     </View>
@@ -431,7 +508,6 @@ export default function HomeScreen({ navigation }: any) {
 
 function ShiftRow({ shift }: { shift: ShiftDetail }) {
     const statusColor = shift.status === 'published' ? colors.success : colors.warning;
-
     return (
         <View style={rowStyles.row}>
             <View style={rowStyles.dayBadge}>
@@ -487,10 +563,19 @@ function TeamStatusCard({
     members: TeamMemberStatus[];
     onViewAll: () => void;
 }) {
+    const previewMembers = members.slice(0, 4);
+
     return (
         <View style={teamStyles.card}>
             <View style={teamStyles.cardHeader}>
-                <Text style={teamStyles.title}>Today's Team</Text>
+                <View style={teamStyles.titleRow}>
+                    <Text style={teamStyles.title}>Today's Team</Text>
+                    {members.length > 0 && (
+                        <View style={teamStyles.countBadge}>
+                            <Text style={teamStyles.countBadgeText}>{members.length}</Text>
+                        </View>
+                    )}
+                </View>
                 <Pressable onPress={onViewAll} style={teamStyles.viewAllBtn}>
                     <Text style={teamStyles.viewAllText}>View all</Text>
                     <Ionicons name="chevron-forward" size={13} color={colors.primary} />
@@ -510,12 +595,16 @@ function TeamStatusCard({
                             />
                         );
                     })()}
-                    <Text style={teamStyles.emptyText}>No one is working today</Text>
+                    <Text style={teamStyles.emptyText}>No shifts scheduled today</Text>
                 </View>
             ) : (
                 <>
-                    <View style={teamStyles.memberRow}>
-                        {members.map(member => {
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={teamStyles.memberRow}
+                    >
+                        {previewMembers.map(member => {
                             const cfg = STATUS_CONFIG[member.status] ?? STATUS_CONFIG.scheduled;
                             return (
                                 <View key={member.user_id} style={teamStyles.member}>
@@ -536,18 +625,18 @@ function TeamStatusCard({
                                 </View>
                             );
                         })}
-                        {members.length < 3 && Array.from({ length: 3 - members.length }).map((_, i) => (
-                            <View key={`ph-${i}`} style={teamStyles.member}>
-                                <View style={[teamStyles.avatarWrap, { borderColor: '#E5E7EB' }]}>
+                        {members.length > 4 && (
+                            <Pressable style={teamStyles.member} onPress={onViewAll}>
+                                <View style={[teamStyles.avatarWrap, { borderColor: colors.inputBorder }]}>
                                     <View style={[teamStyles.avatar, { backgroundColor: '#F3F4F6' }]}>
-                                        <Ionicons name="person-outline" size={18} color={colors.inputBorder} />
+                                        <Text style={teamStyles.moreText}>+{members.length - 4}</Text>
                                     </View>
                                 </View>
-                                <Text style={teamStyles.memberName}>—</Text>
-                                <Text style={[teamStyles.memberStatus, { color: colors.inputBorder }]}>—</Text>
-                            </View>
-                        ))}
-                    </View>
+                                <Text style={teamStyles.memberName}>More</Text>
+                                <Text style={[teamStyles.memberStatus, { color: colors.gray }]}>View all</Text>
+                            </Pressable>
+                        )}
+                    </ScrollView>
                     <View style={teamStyles.legend}>
                         {[
                             { color: '#10B981', label: 'Working' },
@@ -586,7 +675,15 @@ const teamStyles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 14,
     },
+    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     title: { fontSize: 13, fontWeight: '700', color: colors.text },
+    countBadge: {
+        backgroundColor: colors.primary + '18',
+        borderRadius: 999,
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+    },
+    countBadgeText: { fontSize: 11, fontWeight: '700', color: colors.primary },
     viewAllBtn: { flexDirection: 'row', alignItems: 'center', gap: 2 },
     viewAllText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
     emptyRow: {
@@ -597,12 +694,8 @@ const teamStyles = StyleSheet.create({
         paddingVertical: 12,
     },
     emptyText: { fontSize: 13, color: colors.gray, fontStyle: 'italic' },
-    memberRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        marginBottom: 12,
-    },
-    member: { alignItems: 'center', gap: 4, flex: 1 },
+    memberRow: { flexDirection: 'row', gap: 12, paddingBottom: 4 },
+    member: { alignItems: 'center', gap: 4, minWidth: 60 },
     avatarWrap: {
         position: 'relative',
         borderWidth: 2.5,
@@ -618,6 +711,7 @@ const teamStyles = StyleSheet.create({
         justifyContent: 'center',
     },
     avatarText: { fontSize: 16, fontWeight: '700' },
+    moreText: { fontSize: 13, fontWeight: '700', color: colors.gray },
     statusDot: {
         position: 'absolute',
         bottom: 1,
@@ -711,7 +805,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
 
-    mainRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+    mainRow: { flexDirection: 'row', gap: 12, marginBottom: 16, alignItems: 'stretch' },
     shiftsCard: {
         flex: 1,
         backgroundColor: '#fff',
@@ -724,6 +818,7 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 1,
     },
+    shiftsScroll: { flex: 1 },
     shiftsCardHeader: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -731,6 +826,17 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     shiftsCardTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
+    shiftsCardActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    shiftCountBadge: {
+        backgroundColor: colors.primary,
+        borderRadius: 999,
+        minWidth: 20,
+        height: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 6,
+    },
+    shiftCountText: { fontSize: 10, fontWeight: '800', color: '#fff' },
     calendarBtn: {
         width: 28,
         height: 28,

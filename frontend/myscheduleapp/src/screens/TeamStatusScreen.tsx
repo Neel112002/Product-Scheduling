@@ -1,5 +1,5 @@
 // src/screens/TeamStatusScreen.tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -12,7 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
-import { TimeEntryAPI } from '../api/api';
+import { TimeEntryAPI, AdminAPI } from '../api/api';
+import { AuthContext } from '../context/AuthContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -35,10 +36,10 @@ const STATUS_CONFIG: Record<string, {
     icon: React.ComponentProps<typeof Ionicons>['name'];
     bg: string;
 }> = {
-    working: { color: '#10B981', label: 'Working', icon: 'checkmark-circle-outline', bg: '#10B98115' },
-    on_break: { color: '#F59E0B', label: 'On break', icon: 'cafe-outline', bg: '#F59E0B15' },
-    late: { color: '#EF4444', label: 'Late', icon: 'alert-circle-outline', bg: '#EF444415' },
-    scheduled: { color: '#6366F1', label: 'Scheduled', icon: 'time-outline', bg: '#6366F115' },
+    working:   { color: '#10B981', label: 'Working',   icon: 'checkmark-circle-outline', bg: '#10B98115' },
+    on_break:  { color: '#F59E0B', label: 'On break',  icon: 'cafe-outline',             bg: '#F59E0B15' },
+    late:      { color: '#EF4444', label: 'Late',      icon: 'alert-circle-outline',     bg: '#EF444415' },
+    scheduled: { color: '#6366F1', label: 'Scheduled', icon: 'time-outline',             bg: '#6366F115' },
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -50,8 +51,8 @@ function formatTime(iso: string): string {
 }
 
 function timeSince(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
+    const diff  = Date.now() - new Date(iso).getTime();
+    const mins  = Math.floor(diff / 60000);
     const hours = Math.floor(mins / 60);
     if (hours > 0) return `${hours}h ${mins % 60}m`;
     return `${mins}m`;
@@ -60,24 +61,68 @@ function timeSince(iso: string): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function TeamStatusScreen({ route, navigation }: any) {
-    const locationId = route?.params?.locationId;
+    const { user: authUser } = useContext(AuthContext);
 
-    const [team, setTeam] = useState<TeamMemberStatus[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [filter, setFilter] = useState<string | null>(null);
+    const [resolvedLocationId, setResolvedLocationId] = useState<number | null>(
+        route?.params?.locationId ?? null
+    );
+    const [locationName, setLocationName] = useState<string>('');
+    const [team,         setTeam]         = useState<TeamMemberStatus[]>([]);
+    const [loading,      setLoading]      = useState(true);
+    const [refreshing,   setRefreshing]   = useState(false);
+    const [filter,       setFilter]       = useState<string | null>(null);
 
+    // ── Resolve locationId if not passed ──────────────────────────────────────
+    useEffect(() => {
+        if (resolvedLocationId) return;
+
+        // Try auth user first
+        const fromAuth = authUser?.primaryLocation?.id;
+        if (fromAuth) {
+            setResolvedLocationId(fromAuth);
+            setLocationName(authUser?.primaryLocation?.name ?? '');
+            return;
+        }
+
+        // Fallback: fetch from REST
+        AdminAPI.listLocations().then(({ data }) => {
+            const locs = data?.locations ?? [];
+            if (locs.length) {
+                setResolvedLocationId(locs[0].id);
+                setLocationName(locs[0].name ?? '');
+            }
+        }).catch(() => {});
+    }, [resolvedLocationId, authUser]);
+
+    // Set location name from locations list if we have an id but no name
+    useEffect(() => {
+        if (!resolvedLocationId || locationName) return;
+        AdminAPI.listLocations().then(({ data }) => {
+            const loc = (data?.locations ?? []).find((l: any) => l.id === resolvedLocationId);
+            if (loc) setLocationName(loc.name ?? '');
+        }).catch(() => {});
+    }, [resolvedLocationId, locationName]);
+
+    // ── Fetch team ────────────────────────────────────────────────────────────
     const fetchTeam = useCallback(async () => {
-        if (!locationId) return;
+        if (!resolvedLocationId) return;
         try {
-            const { data } = await TimeEntryAPI.getTeamStatus(locationId);
-            setTeam(data?.team ?? []);
+            const { data } = await TimeEntryAPI.getTeamStatus(resolvedLocationId);
+            // Sort: late → working → on_break → scheduled
+            const order: Record<string, number> = {
+                late: 0, working: 1, on_break: 2, scheduled: 3,
+            };
+            const sorted = (data?.team ?? []).sort(
+                (a: TeamMemberStatus, b: TeamMemberStatus) =>
+                    (order[a.status] ?? 4) - (order[b.status] ?? 4)
+            );
+            setTeam(sorted);
         } catch {
             setTeam([]);
         } finally {
             setLoading(false);
         }
-    }, [locationId]);
+    }, [resolvedLocationId]);
 
     useEffect(() => { fetchTeam(); }, [fetchTeam]);
 
@@ -95,9 +140,9 @@ export default function TeamStatusScreen({ route, navigation }: any) {
 
     // ── Counts ────────────────────────────────────────────────────────────────
     const counts = {
-        working: team.filter(m => m.status === 'working').length,
-        on_break: team.filter(m => m.status === 'on_break').length,
-        late: team.filter(m => m.status === 'late').length,
+        working:   team.filter(m => m.status === 'working').length,
+        on_break:  team.filter(m => m.status === 'on_break').length,
+        late:      team.filter(m => m.status === 'late').length,
         scheduled: team.filter(m => m.status === 'scheduled').length,
     };
 
@@ -158,6 +203,25 @@ export default function TeamStatusScreen({ route, navigation }: any) {
         );
     };
 
+    // ── No location resolved yet ──────────────────────────────────────────────
+    if (!resolvedLocationId && !loading) {
+        return (
+            <SafeAreaView style={styles.safe}>
+                <View style={styles.header}>
+                    <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                        <Ionicons name="arrow-back" size={22} color={colors.text} />
+                    </Pressable>
+                    <Text style={styles.headerTitle}>Today's Team</Text>
+                </View>
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="location-outline" size={40} color={colors.inputBorder} />
+                    <Text style={styles.emptyTitle}>No location found</Text>
+                    <Text style={styles.emptySub}>Could not determine your location.</Text>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
     // ── Render ────────────────────────────────────────────────────────────────
     return (
         <SafeAreaView style={styles.safe}>
@@ -167,21 +231,51 @@ export default function TeamStatusScreen({ route, navigation }: any) {
                 <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <Ionicons name="arrow-back" size={22} color={colors.text} />
                 </Pressable>
-                <Text style={styles.headerTitle}>Today's Team</Text>
+                <View style={styles.headerCenter}>
+                    <Text style={styles.headerTitle}>Today's Team</Text>
+                    {locationName ? (
+                        <Text style={styles.headerSub}>{locationName}</Text>
+                    ) : null}
+                </View>
                 <View style={styles.liveIndicator}>
                     <View style={styles.liveDot} />
                     <Text style={styles.liveText}>Live</Text>
                 </View>
             </View>
 
-            {/* Filter pills — only show statuses that have members */}
+            {/* Summary counts */}
+            <View style={styles.summaryBar}>
+                {[
+                    { color: '#10B981', label: 'Working',   count: counts.working },
+                    { color: '#F59E0B', label: 'On break',  count: counts.on_break },
+                    { color: '#EF4444', label: 'Late',      count: counts.late },
+                    { color: '#6366F1', label: 'Scheduled', count: counts.scheduled },
+                ].map(item => (
+                    <Pressable
+                        key={item.label}
+                        style={styles.summaryItem}
+                        onPress={() => setFilter(
+                            filter === item.label.toLowerCase().replace(' ', '_')
+                                ? null
+                                : item.label.toLowerCase().replace(' ', '_')
+                        )}
+                    >
+                        <Text style={[styles.summaryCount, { color: item.color }]}>
+                            {item.count}
+                        </Text>
+                        <Text style={styles.summaryLabel}>{item.label}</Text>
+                    </Pressable>
+                ))}
+            </View>
+
+            {/* Filter pills */}
             <View style={styles.pillRow}>
                 {[
-                    { key: null, label: 'All', count: team.length },
-                    { key: 'working', label: '🟢 Working', count: counts.working },
-                    { key: 'on_break', label: '🟡 Break', count: counts.on_break },
-                    { key: 'late', label: '🔴 Late', count: counts.late },
-                    { key: 'scheduled', label: '🔵 Soon', count: counts.scheduled },
+                    { key: null,       label: 'All',        count: team.length },
+                    { key: 'working',  label: '🟢 Working', count: counts.working },
+                    { key: 'on_break', label: '🟡 Break',   count: counts.on_break },
+                    { key: 'late',     label: '🔴 Late',    count: counts.late },
+                    { key: 'scheduled',label: '🔵 Soon',    count: counts.scheduled },
                 ].filter(p => p.key === null || p.count > 0).map(pill => (
                     <Pressable
                         key={String(pill.key)}
@@ -195,23 +289,6 @@ export default function TeamStatusScreen({ route, navigation }: any) {
                             {pill.label} ({pill.count})
                         </Text>
                     </Pressable>
-                ))}
-            </View>
-
-            {/* Summary counts */}
-            <View style={styles.summaryBar}>
-                {[
-                    { color: '#10B981', label: 'Working', count: counts.working },
-                    { color: '#F59E0B', label: 'On break', count: counts.on_break },
-                    { color: '#EF4444', label: 'Late', count: counts.late },
-                    { color: '#6366F1', label: 'Scheduled', count: counts.scheduled },
-                ].map(item => (
-                    <View key={item.label} style={styles.summaryItem}>
-                        <Text style={[styles.summaryCount, { color: item.color }]}>
-                            {item.count}
-                        </Text>
-                        <Text style={styles.summaryLabel}>{item.label}</Text>
-                    </View>
                 ))}
             </View>
 
@@ -236,9 +313,13 @@ export default function TeamStatusScreen({ route, navigation }: any) {
                     ListEmptyComponent={
                         <View style={styles.emptyContainer}>
                             <Ionicons name="moon-outline" size={40} color={colors.inputBorder} />
-                            <Text style={styles.emptyTitle}>No one is working today</Text>
+                            <Text style={styles.emptyTitle}>
+                                {filter ? `No one is ${filter.replace('_', ' ')}` : 'No shifts today'}
+                            </Text>
                             <Text style={styles.emptySub}>
-                                No published shifts for today at this location.
+                                {filter
+                                    ? 'Try a different filter.'
+                                    : 'No published shifts for today at this location.'}
                             </Text>
                         </View>
                     }
@@ -253,7 +334,7 @@ export default function TeamStatusScreen({ route, navigation }: any) {
     );
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Member card styles ────────────────────────────────────────────────────────
 
 const memberStyles = StyleSheet.create({
     card: {
@@ -284,7 +365,7 @@ const memberStyles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    avatarText: { fontSize: 15, fontWeight: '700' },
+    avatarText:  { fontSize: 15, fontWeight: '700' },
     dot: {
         position: 'absolute',
         bottom: 1,
@@ -295,11 +376,11 @@ const memberStyles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#fff',
     },
-    info: { flex: 1, minWidth: 0 },
-    name: { fontSize: 14, fontWeight: '700', color: colors.text },
-    role: { fontSize: 11, color: colors.gray, marginTop: 1 },
+    info:      { flex: 1, minWidth: 0 },
+    name:      { fontSize: 14, fontWeight: '700', color: colors.text },
+    role:      { fontSize: 11, color: colors.gray, marginTop: 1 },
     shiftTime: { fontSize: 11, color: colors.gray, marginTop: 2 },
-    right: { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
+    right:     { alignItems: 'flex-end', gap: 4, flexShrink: 0 },
     statusBadge: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -309,8 +390,10 @@ const memberStyles = StyleSheet.create({
         borderRadius: 999,
     },
     statusText: { fontSize: 11, fontWeight: '700' },
-    detail: { fontSize: 11, color: colors.gray },
+    detail:     { fontSize: 11, color: colors.gray },
 });
+
+// ── Screen styles ─────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: '#F8F8FC' },
@@ -324,8 +407,10 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
     },
-    backBtn: { padding: 4, marginRight: 8 },
-    headerTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
+    backBtn:      { padding: 4, marginRight: 8 },
+    headerCenter: { flex: 1 },
+    headerTitle:  { fontSize: 18, fontWeight: '700', color: colors.text },
+    headerSub:    { fontSize: 11, color: colors.gray, marginTop: 1 },
     liveIndicator: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -335,8 +420,20 @@ const styles = StyleSheet.create({
         borderRadius: 999,
         backgroundColor: '#10B98115',
     },
-    liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#10B981' },
+    liveDot:  { width: 7, height: 7, borderRadius: 4, backgroundColor: '#10B981' },
     liveText: { fontSize: 12, color: '#10B981', fontWeight: '700' },
+
+    summaryBar: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        paddingVertical: 14,
+        backgroundColor: '#fff',
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+    summaryItem:  { alignItems: 'center', gap: 2 },
+    summaryCount: { fontSize: 22, fontWeight: '800' },
+    summaryLabel: { fontSize: 11, color: colors.gray },
 
     pillRow: {
         flexDirection: 'row',
@@ -356,25 +453,13 @@ const styles = StyleSheet.create({
         borderColor: colors.inputBorder,
         backgroundColor: '#FAFAFA',
     },
-    pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    pillText: { fontSize: 12, color: colors.text, fontWeight: '600' },
+    pillActive:     { backgroundColor: colors.primary, borderColor: colors.primary },
+    pillText:       { fontSize: 12, color: colors.text, fontWeight: '600' },
     pillTextActive: { color: '#fff' },
 
-    summaryBar: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingVertical: 12,
-        backgroundColor: '#fff',
-        borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
-    },
-    summaryItem: { alignItems: 'center', gap: 2 },
-    summaryCount: { fontSize: 22, fontWeight: '800' },
-    summaryLabel: { fontSize: 11, color: colors.gray },
-
-    listContent: { padding: 16 },
+    listContent:      { padding: 16 },
     loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
-    loadingText: { fontSize: 13, color: colors.gray },
+    loadingText:      { fontSize: 13, color: colors.gray },
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
@@ -383,5 +468,5 @@ const styles = StyleSheet.create({
         padding: 40,
     },
     emptyTitle: { fontSize: 16, fontWeight: '700', color: colors.text, textAlign: 'center' },
-    emptySub: { fontSize: 13, color: colors.gray, textAlign: 'center' },
+    emptySub:   { fontSize: 13, color: colors.gray, textAlign: 'center' },
 });

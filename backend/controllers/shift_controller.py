@@ -100,6 +100,47 @@ class ShiftController:
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
 
+    # ── Bulk week-wise create ─────────────────────────────────────────────────
+    def bulk_create_week(self):
+        caller_id   = int(get_jwt_identity())
+        data        = request.get_json(silent=True) or {}
+        location_id = data.get("location_id")
+        week_start  = data.get("week_start")
+        rows        = data.get("rows", [])
+        if not location_id or not week_start:
+            return jsonify({"error": "location_id and week_start are required"}), 400
+        if not isinstance(rows, list) or not rows:
+            return jsonify({"error": "rows must be a non-empty array"}), 400
+        try:
+            result = svc.bulk_create_week(
+                caller_user_id=caller_id,
+                location_id=location_id,
+                week_start=week_start,
+                rows=rows,
+            )
+            return jsonify(result), 201
+        except PermissionError as e:
+            return jsonify({"error": str(e)}), 403
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except Exception:
+            import traceback; traceback.print_exc()
+            return jsonify({"error": "Something went wrong"}), 500
+
+    def roles_with_staff(self):
+        caller_id   = int(get_jwt_identity())
+        location_id = request.args.get("location_id", type=int)
+        if not location_id:
+            return jsonify({"error": "location_id is required"}), 400
+        try:
+            roles = svc.roles_with_staff(caller_user_id=caller_id, location_id=location_id)
+            return jsonify({"roles": roles}), 200
+        except PermissionError as e:
+            return jsonify({"error": str(e)}), 403
+        except Exception:
+            import traceback; traceback.print_exc()
+            return jsonify({"error": "Something went wrong"}), 500
+
     def assign_user(self, shift_id):
         caller_id = int(get_jwt_identity())
         data      = request.get_json(silent=True) or {}
