@@ -1,0 +1,77 @@
+scalar DateTime
+
+type Role {
+  id: Int!
+  name: String!
+  locationId: Int!
+  isSystem: Boolean!
+}
+
+type User {
+  id: Int!
+  user_id: Int!
+  username: String!
+  user_email: String!
+  display_name: String
+  role: Role!
+  isActive: Boolean!
+  company: Company
+  primaryLocation: Location
+}
+
+type Company {
+  id: Int!
+  name: String!
+  email: String
+  address: String
+  locations: [Location!]!
+}
+
+type Location {
+  id: Int!
+  name: String!
+  address: String
+  company: Company
+}
+
+type Shift {
+  id: Int!
+  location: Location!
+  startTime: DateTime!
+  endTime: DateTime!
+  role: String
+}
+
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+  user: User!
+}
+
+type InviteResult {
+  inviteId: Int!
+  email: String!
+}
+
+type Query {
+  me: User
+  myLocations: [Location!]!
+  shiftsByLocation(locationId: Int!): [Shift!]!
+  teamMembers(locationId: Int!): [User!]!
+
+  locationRoles(locationId: Int!): [Role!]!
+}
+
+type Mutation {
+  login(email: String!, password: String!): AuthPayload!
+
+  createRole(locationId: Int!, name: String!): Role!
+  deleteRole(roleId: Int!): Boolean!
+  updateUserRole(empId: Int!, roleId: Int!): User!
+
+  sendOnboardingInvite(
+    email: String!
+    locationId: Int!
+    position: String
+  ): InviteResult!
+}

@@ -2,6 +2,7 @@ from flask import current_app
 from flask_mail import Message
 from extensions import mail
 
+
 def send_password_reset_otp_email(to_email: str, otp_code: str) -> None:
     """
     Sends a 6-digit OTP to the user's email. No link.
@@ -54,3 +55,41 @@ def send_email_verification_email(to_email: str, verify_url: str) -> None:
         mail.send(msg)
     except Exception:
         current_app.logger.exception("Email verification send failed")
+
+
+def send_onboarding_email(
+    to_email: str,
+    temp_password: str,
+    company_name: str,
+    location_name: str,
+) -> None:
+    """
+    Sends onboarding email to newly invited staff with a temporary password.
+    """
+    if not current_app.config.get("EMAIL_SENDING_ENABLED"):
+        current_app.logger.info(
+            f"[DEV] Onboarding email for {to_email}: "
+            f"company={company_name}, location={location_name}, temp_password={temp_password}"
+        )
+        return
+
+    msg = Message(
+        subject=f"Your staff account for {company_name}",
+        recipients=[to_email],
+        html=f"""
+            <p>You have been added as a staff member at <strong>{company_name}</strong> ({location_name}).</p>
+            <p>You can now log into the Work Scheduler mobile app using:</p>
+            <ul>
+              <li><strong>Username:</strong> {to_email}</li>
+              <li><strong>Temporary password:</strong> {temp_password}</li>
+            </ul>
+            <p>
+              For security, please log in as soon as possible and change your password
+              from the profile or settings screen.
+            </p>
+        """,
+    )
+    try:
+        mail.send(msg)
+    except Exception:
+        current_app.logger.exception("Onboarding email send failed")

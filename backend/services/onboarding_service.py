@@ -1,150 +1,86 @@
 # services/onboarding_service.py
-from datetime import timedelta
-from typing import Optional, Dict, Tuple
-
-from sqlalchemy.exc import IntegrityError
-from flask_jwt_extended import create_access_token, decode_token
+from datetime import date
+from typing import Tuple
+import secrets
 from extensions import db
-from models import OnboardingInvite, Company, Location, AppUser, Employment
-from services.auth_service import AuthService
+from models import OnboardingInvite, Company, Location, AppUser, Employment, Role
+from utils.security import hash_password
+from utils.mailer import send_onboarding_email
+
 
 class OnboardingService:
-    """
-    Company-driven onboarding.
-    - create_invite: manager creates an invite for an email at company/location.
-    - generate_invite_token: short-lived JWT to embed in link.
-    - accept_invite: employee sets username/password and is created/linked.
-    """
 
-    def __init__(self) -> None:
-        self.auth = AuthService()
+    def create_invite(self, *, company, location, email, position) -> Tuple[OnboardingInvite, AppUser]:
+        normalized_email = (email or "").strip().lower()
+        if not normalized_email:
+            raise ValueError("Email is required")
 
-    # ---------- Manager/Owner side ----------
-    def create_invite(self, comp_id: int, email: str,
-                      location_id: Optional[int] = None,
-                      position: str = "Employee",
-                      ttl_days: int = 7) -> Tuple[OnboardingInvite, str]:
-        # ensure company exists
-        comp = Company.query.get(comp_id)
-        if not comp:
-            raise ValueError("Company not found")
+        temp_password = secrets.token_urlsafe(8)
+        password_hash = hash_password(temp_password)
 
-        loc = None
-        if location_id:
-            loc = Location.query.get(location_id)
-            if not loc or loc.comp_id != comp_id:
-                raise ValueError("Invalid location for company")
+        # Find or create role
+        role = Role.query.filter_by(location_id=location.loc_id, name=position.strip()).first()
+        if not role:
+            role = Role(name=position.strip(), location_id=location.loc_id, is_system=False)
+            db.session.add(role)
+            db.session.flush()
+
+        user = AppUser.query.filter_by(user_email=normalized_email).first()
+        if user:
+            user.user_password = password_hash
+            if not user.is_verified:
+                user.is_verified = True
+        else:
+            user = AppUser(
+                username=normalized_email,
+                user_email=normalized_email,
+                user_password=password_hash,
+                is_verified=True,
+            )
+            db.session.add(user)
+            db.session.flush()
+
+        employment = Employment.query.filter_by(
+            user_id=user.user_id, comp_id=company.comp_id, location_id=location.loc_id
+        ).first()
+        if employment:
+            employment.role_id = role.role_id
+            employment.status  = "active"
+        else:
+            employment = Employment(
+                user_id=user.user_id,
+                comp_id=company.comp_id,
+                location_id=location.loc_id,
+                role_id=role.role_id,
+                status="active",
+                start_date=date.today(),
+            )
+            db.session.add(employment)
 
         invite = OnboardingInvite(
-            comp_id=comp_id,
-            location_id=location_id,
-            email=email.strip(),
-            status="pending"
+            comp_id=company.comp_id,
+            location_id=location.loc_id,
+            email=normalized_email,
+            status="sent",
         )
         db.session.add(invite)
-        db.session.commit()  # get form_id
+        db.session.commit()
 
-        token = self.generate_invite_token(invite, position=position, ttl_days=ttl_days)
-        return invite, token
-
-    def generate_invite_token(self, invite: OnboardingInvite, position: str, ttl_days: int = 7) -> str:
-        # A short-lived access token carrying invite claims
-        additional_claims = {
-            "purpose": "onboarding",
-            "form_id": int(invite.form_id),
-            "comp_id": int(invite.comp_id),
-            "location_id": int(invite.location_id) if invite.location_id else None,
-            "email": invite.email,
-            "position": position,
-        }
-        token = create_access_token(
-            identity=f"invite:{invite.form_id}",
-            additional_claims=additional_claims,
-            expires_delta=timedelta(days=ttl_days),
-        )
-        return token
-
-    # ---------- Employee side ----------
-    def accept_invite(self, token: str, username: str, password: str, confirm_password: str) -> Dict:
-        # Validate token and claims
         try:
-            data = decode_token(token)
-        except Exception:
-            raise ValueError("Invalid or expired invite token")
-
-        claims = data.get("sub"), data.get("claims") or {}
-        if not claims[1] or claims[1].get("purpose") != "onboarding":
-            raise ValueError("Invalid invite token")
-
-        form_id = int(claims[1]["form_id"])
-        comp_id = int(claims[1]["comp_id"])
-        location_id = claims[1]["location_id"]
-        email = claims[1]["email"]
-        position = claims[1].get("position") or "Employee"
-
-        invite = OnboardingInvite.query.get(form_id)
-        if not invite or invite.status not in ("pending", "sent"):
-            raise ValueError("Invite is not active")
-
-        if password != confirm_password:
-            raise ValueError("password and confirm_password do not match")
-
-        # If user already exists, attach employment; else create user then attach
-        user = AppUser.query.filter_by(user_email=email).first()
-        if not user:
-            # Reuse AuthService for hashing/uniqueness
-            user = self.auth.register_user(username=username.strip(), email=email.strip(), password=password)
-        else:
-            # If user exists, just ensure password is set/updated if desired
-            # (Optional) You may choose to reject and ask them to login instead.
-            pass
-
-        # Link employment (idempotent-ish)
-        try:
-            emp = Employment(
-                user_id=user.user_id,
-                comp_id=comp_id,
-                location_id=location_id,
-                position=position,
-                status="active",
+            send_onboarding_email(
+                to_email=normalized_email,
+                temp_password=temp_password,
+                company_name=company.comp_name,
+                location_name=location.loc_name,
             )
-            db.session.add(emp)
-            # mark invite accepted
-            invite.status = "accepted"
-            db.session.add(invite)
-            db.session.commit()
-        except IntegrityError:
-            db.session.rollback()
-            # Already employed there? Just mark invite accepted.
-            invite.status = "accepted"
-            db.session.add(invite)
-            db.session.commit()
-
-        return {
-            "user_id": int(user.user_id),
-            "comp_id": comp_id,
-            "location_id": int(location_id) if location_id else None,
-            "position": position,
-            "invite_status": invite.status,
-        }
-
-    def prevalidate(self, token: str) -> Dict:
-        """Optional: lets frontend confirm the token is valid and fetch context (company/location/email)."""
-        try:
-            data = decode_token(token)
         except Exception:
-            raise ValueError("Invalid or expired invite token")
+            from flask import current_app
+            current_app.logger.exception("Failed to send onboarding email")
 
-        claims = data.get("claims") or {}
-        if claims.get("purpose") != "onboarding":
-            raise ValueError("Invalid invite token")
+        return invite, user
 
-        comp = Company.query.get(claims["comp_id"])
-        loc = Location.query.get(claims["location_id"]) if claims.get("location_id") else None
+    def accept_invite(self, *args, **kwargs):
+        raise ValueError("Token-based invite flow is no longer supported.")
 
-        return {
-            "email": claims.get("email"),
-            "position": claims.get("position"),
-            "company": {"id": comp.comp_id, "name": comp.comp_name} if comp else None,
-            "location": {"id": loc.loc_id, "name": loc.loc_name} if loc else None,
-        }
+    def prevalidate(self, *args, **kwargs):
+        raise ValueError("Token-based invite flow is no longer supported.")

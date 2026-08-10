@@ -1,107 +1,103 @@
 # services/registration_service.py
+from datetime import date
 from typing import Tuple, Dict
 from sqlalchemy.exc import IntegrityError
 from extensions import db
-from models import Company, Location, AppUser, Employment
+from models import Company, Location, AppUser, Employment, Role
 from utils.security import hash_password
 
+
 class RegistrationService:
-    """
-    Handles the multi-step signup wizard in a single DB transaction.
-    Professional order: 1) Owner Account, 2) Company, 3) First Location.
-    """
-
-    REQUIRED_OWNER = ("username", "email", "password", "confirm_password")
-    REQUIRED_COMPANY = ("name", "email", "address", "city", "country", "postal_code")
+    REQUIRED_OWNER    = ("username", "email", "password", "confirm_password")
+    REQUIRED_COMPANY  = ("name", "email", "address", "city", "country", "postal_code")
     REQUIRED_LOCATION = ("name", "address", "postal_code")
+    SYSTEM_ROLES      = ["Owner", "Manager", "Supervisor", "Staff"]
 
     @staticmethod
-    def _fmt_company_address(address: str, city: str, country: str, postal: str) -> str:
-        parts = [address, city, country, postal]
-        return ", ".join([p for p in parts if p])
+    def _fmt_company_address(address, city, country, postal):
+        return ", ".join([p for p in [address, city, country, postal] if p])
 
     @staticmethod
-    def _fmt_location_address(address: str, postal: str) -> str:
+    def _fmt_location_address(address, postal):
         return f"{address}, {postal}"
 
     def register_wizard(self, payload: Dict) -> Tuple[Company, Location, AppUser]:
-        """
-        Expected payload structure (Account -> Company -> Location):
+        owner_d    = (payload or {}).get("owner")    or {}
+        company_d  = (payload or {}).get("company")  or {}
+        location_d = (payload or {}).get("location") or {}
 
-        {
-        "owner":   {"username": "...", "email": "...", "password": "...", "confirm_password": "..."},
-        "company": {"name": "...", "email": "...", "address": "...", "city": "...", "country": "...", "postal_code": "..."},
-        "location":{"name": "...", "address": "...", "postal_code": "..."}
-        }
-        """
-        owner = (payload or {}).get("owner") or {}
-        company = (payload or {}).get("company") or {}
-        location = (payload or {}).get("location") or {}
-
-        # Validate presence
         missing = {}
-        mo = [k for k in self.REQUIRED_OWNER if k not in owner]
-        mc = [k for k in self.REQUIRED_COMPANY if k not in company]
-        ml = [k for k in self.REQUIRED_LOCATION if k not in location]
-        if mo: missing["owner"] = f"Missing: {', '.join(mo)}"
-        if mc: missing["company"] = f"Missing: {', '.join(mc)}"
+        mo = [k for k in self.REQUIRED_OWNER    if k not in owner_d]
+        mc = [k for k in self.REQUIRED_COMPANY  if k not in company_d]
+        ml = [k for k in self.REQUIRED_LOCATION if k not in location_d]
+        if mo: missing["owner"]    = f"Missing: {', '.join(mo)}"
+        if mc: missing["company"]  = f"Missing: {', '.join(mc)}"
         if ml: missing["location"] = f"Missing: {', '.join(ml)}"
         if missing:
             raise ValueError(missing)
 
-        # Validate confirm password
-        if owner["password"] != owner["confirm_password"]:
+        if owner_d["password"] != owner_d["confirm_password"]:
             raise ValueError({"owner": "password and confirm_password do not match"})
 
         comp_addr = self._fmt_company_address(
-            company["address"].strip(),
-            company["city"].strip(),
-            company["country"].strip(),
-            company["postal_code"].strip(),
+            company_d["address"].strip(), company_d["city"].strip(),
+            company_d["country"].strip(), company_d["postal_code"].strip(),
         )
         loc_addr = self._fmt_location_address(
-            location["address"].strip(),
-            location["postal_code"].strip(),
+            location_d["address"].strip(), location_d["postal_code"].strip()
         )
+        timezone = location_d.get("timezone", "UTC")
 
         try:
             with db.session.begin():
-                # 1) Owner account
                 user = AppUser(
-                    username=owner["username"].strip(),
-                    user_email=owner["email"].strip(),
-                    user_password=hash_password(owner["password"]),
+                    username=owner_d["username"].strip(),
+                    user_email=owner_d["email"].strip(),
+                    user_password=hash_password(owner_d["password"]),
                     is_verified=False,
                 )
                 db.session.add(user)
-                db.session.flush()  # user_id
+                db.session.flush()
 
-                # 2) Company
                 comp = Company(
-                    comp_name=company["name"].strip(),
-                    comp_email=company["email"].strip(),
+                    comp_name=company_d["name"].strip(),
+                    comp_email=company_d["email"].strip(),
                     comp_address=comp_addr,
                     is_verified=False,
+                    plan="free",
                 )
                 db.session.add(comp)
-                db.session.flush()  # comp_id
+                db.session.flush()
 
-                # 3) First Location
                 loc = Location(
                     comp_id=comp.comp_id,
-                    loc_name=location["name"].strip(),
+                    loc_name=location_d["name"].strip(),
                     loc_address=loc_addr,
+                    timezone=timezone,
                 )
                 db.session.add(loc)
-                db.session.flush()  # loc_id
+                db.session.flush()
 
-                # Employment link (owner ↔ company/location)
+                # Create system roles for this location
+                roles = {}
+                for role_name in self.SYSTEM_ROLES:
+                    role = Role(
+                        name=role_name,
+                        location_id=loc.loc_id,
+                        is_system=True,
+                        created_by=user.user_id,
+                    )
+                    db.session.add(role)
+                    db.session.flush()
+                    roles[role_name] = role
+
                 emp = Employment(
                     user_id=user.user_id,
                     comp_id=comp.comp_id,
                     location_id=loc.loc_id,
-                    position="Owner",
+                    role_id=roles["Owner"].role_id,
                     status="active",
+                    start_date=date.today(),
                 )
                 db.session.add(emp)
 
@@ -109,5 +105,4 @@ class RegistrationService:
 
         except IntegrityError:
             db.session.rollback()
-            # Likely duplicate emails (CITEXT unique) for owner or company.
             raise ValueError("Duplicate email: owner or company email already exists.")
