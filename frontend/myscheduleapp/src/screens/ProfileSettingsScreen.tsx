@@ -151,9 +151,13 @@ export default function ProfileSettingsScreen({ navigation }: any) {
 
             {/* Header */}
             <View style={styles.header}>
-                <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text} />
-                </Pressable>
+                {navigation.canGoBack() ? (
+                    <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                        <Ionicons name="arrow-back" size={22} color={colors.text} />
+                    </Pressable>
+                ) : (
+                    <View style={{ width: 36 }} />
+                )}
                 <Text style={styles.headerTitle}>Profile Settings</Text>
                 <View style={{ width: 36 }} />
             </View>

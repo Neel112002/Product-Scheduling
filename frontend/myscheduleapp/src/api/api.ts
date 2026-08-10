@@ -378,3 +378,51 @@ export const TimeOffAPI = {
     decide: (request_id: number, approve: boolean, manager_notes?: string) =>
         api.post(`/time-off/${request_id}/decide`, { approve, manager_notes }),
 };
+
+// ── Messaging API ──────────────────────────────────────────────────────────────
+export const MessagingAPI = {
+    getChannels: () =>
+        api.get('/messaging/channels'),
+
+    setupChannels: (location_id?: number) =>
+        api.post('/messaging/channels/setup', { location_id }),
+
+    createGroup: (body: {
+        name: string;
+        member_ids: number[];
+        is_broadcast?: boolean;
+        description?: string;
+    }) => api.post('/messaging/channels/group', body),
+
+    getDM: (user_id: number) =>
+        api.post('/messaging/channels/dm', { user_id }),
+
+    createShiftThread: (shift_id: number) =>
+        api.post(`/messaging/shifts/${shift_id}/thread`),
+
+    getMessages: (channel_id: number, before_id?: number, limit = 50) =>
+        api.get(`/messaging/channels/${channel_id}/messages`, {
+            params: { before_id, limit },
+        }),
+
+    sendMessage: (channel_id: number, content: string, reply_to_id?: number) =>
+        api.post(`/messaging/channels/${channel_id}/messages`, { content, reply_to_id }),
+
+    markRead: (channel_id: number) =>
+        api.post(`/messaging/channels/${channel_id}/read`),
+
+    getPinned: (channel_id: number) =>
+        api.get(`/messaging/channels/${channel_id}/pinned`),
+
+    getMembers: (channel_id: number) =>
+        api.get(`/messaging/channels/${channel_id}/members`),
+
+    addMember: (channel_id: number, user_id: number) =>
+        api.post(`/messaging/channels/${channel_id}/members`, { user_id }),
+
+    pinMessage: (message_id: number) =>
+        api.post(`/messaging/messages/${message_id}/pin`),
+
+    reactToMessage: (message_id: number, emoji: string) =>
+        api.post(`/messaging/messages/${message_id}/react`, { emoji }),
+};

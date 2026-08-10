@@ -48,3 +48,38 @@ def register_socket_handlers():
     @socketio.on("ping_server")
     def handle_ping():
         emit("pong_server", {"status": "ok"})
+        
+    # ── Messaging ─────────────────────────────────────────────────────────────
+
+    @socketio.on("messaging:join")
+    def handle_messaging_join(data):
+        """Join socket rooms for all user's channels."""
+        for channel_id in data.get("channel_ids", []):
+            join_room(f"channel_{channel_id}")
+
+    @socketio.on("messaging:leave")
+    def handle_messaging_leave(data):
+        channel_id = data.get("channel_id")
+        if channel_id:
+            leave_room(f"channel_{channel_id}")
+
+    @socketio.on("typing:start")
+    def handle_typing_start(data):
+        channel_id = data.get("channel_id")
+        user_name  = data.get("user_name", "Someone")
+        if channel_id:
+            emit("typing", {
+                "channel_id": channel_id,
+                "user_name":  user_name,
+                "is_typing":  True,
+            }, room=f"channel_{channel_id}", include_self=False)
+
+    @socketio.on("typing:stop")
+    def handle_typing_stop(data):
+        channel_id = data.get("channel_id")
+        if channel_id:
+            emit("typing", {
+                "channel_id": channel_id,
+                "user_name":  data.get("user_name", "Someone"),
+                "is_typing":  False,
+            }, room=f"channel_{channel_id}", include_self=False)

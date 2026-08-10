@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors }   from '../../theme/colors';
+import ShiftRing, { RingTone } from './ShiftRing';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ function getDayNightIcon(): {
         : { icon: 'moon-outline',  color: '#6366F1' };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers (unchanged from the original) ──────────────────────────────────────
 
 function formatTime(iso: string): string {
     return new Date(iso).toLocaleTimeString('en-CA', {
@@ -120,6 +121,14 @@ function getBreakElapsed(breakStartIso: string): number {
 function getBreakExpectedEnd(breakStartIso: string, durationMins: number): string {
     const end = new Date(new Date(breakStartIso).getTime() + durationMins * 60000);
     return formatTime(end.toISOString());
+}
+
+// ── New helper — how far through the scheduled shift are we, 0 to 1 ───────────
+function getElapsedProgress(startIso: string, endIso: string, nowMs: number): number {
+    const start = new Date(startIso).getTime();
+    const end   = new Date(endIso).getTime();
+    if (end <= start) return 0;
+    return Math.min(Math.max((nowMs - start) / (end - start), 0), 1);
 }
 
 function calcStatus(
@@ -185,10 +194,10 @@ export default function TodayShiftStatusCard({
     const activeBreak = activeEntry?.breaks?.find(b => b.is_active) ?? null;
     const dayNight    = getDayNightIcon();
 
-    // ── No shift ──────────────────────────────────────────────────────────────
+    // ── No shift — kept as a simple flat card, there's no timeline to ring ─────
     if (status === 'no_shift') {
         return (
-            <View style={[styles.card, styles.cardNeutral]}>
+            <View style={[styles.flatCard, styles.cardNeutral]}>
                 <View style={[styles.iconWrap, { backgroundColor: dayNight.color + '20' }]}>
                     <Ionicons name={dayNight.icon} size={22} color={dayNight.color} />
                 </View>
@@ -200,232 +209,146 @@ export default function TodayShiftStatusCard({
         );
     }
 
-    // ── Yet to start ──────────────────────────────────────────────────────────
+    // ── Every other state renders through the ring ──────────────────────────────
+    let ringProps: {
+        tone: RingTone;
+        progress: number;
+        pulsing?: boolean;
+        icon: React.ComponentProps<typeof Ionicons>['name'];
+        label: string;
+        primaryText: string;
+        secondaryText?: string;
+        actionLabel?: string;
+        actionIcon?: React.ComponentProps<typeof Ionicons>['name'];
+        onAction?: () => void;
+        actionDisabled?: boolean;
+    } | null = null;
+
+    let secondaryAction: { label: string; onPress: () => void } | null = null;
+
     if (status === 'yet_to_start') {
         const countdown = getCountdown(todayShift!.start_time);
-        return (
-            <View style={[styles.card, styles.cardBlue]}>
-                <View style={[styles.iconWrap, { backgroundColor: '#6366F120' }]}>
-                    <Ionicons name="time-outline" size={22} color="#6366F1" />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: '#6366F1' }]}>
-                        Yet to start
-                    </Text>
-                    <Text style={styles.statusSub}>
-                        {formatTime(todayShift!.start_time)} – {formatTime(todayShift!.end_time)}
-                    </Text>
-                    {countdown ? (
-                        <Text style={[styles.countdown, { color: '#6366F1' }]}>
-                            Starts in {countdown}
-                        </Text>
-                    ) : null}
-                </View>
-            </View>
-        );
+        ringProps = {
+            tone: 'info',
+            progress: 0,
+            icon: 'time-outline',
+            label: countdown ? `starts in ${countdown}` : 'shift scheduled',
+            primaryText: `${formatTime(todayShift!.start_time)} – ${formatTime(todayShift!.end_time)}`,
+        };
     }
 
-    // ── Window open ───────────────────────────────────────────────────────────
     if (status === 'window_open') {
-        return (
-            <View style={[styles.card, styles.cardSuccess]}>
-                <View style={[styles.iconWrap, { backgroundColor: colors.success + '20' }]}>
-                    <Ionicons name="log-in-outline" size={22} color={colors.success} />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: colors.success }]}>
-                        Ready to clock in
-                    </Text>
-                    <Text style={styles.statusSub}>
-                        {formatTime(todayShift!.start_time)} – {formatTime(todayShift!.end_time)}
-                    </Text>
-                    <Text style={[styles.statusSub, { color: colors.success, marginTop: 2 }]}>
-                        Window closes in {getCountdown(
-                            new Date(new Date(todayShift!.start_time).getTime() + CLOCK_WINDOW_MINS * 60000).toISOString()
-                        ) || 'soon'}
-                    </Text>
-                </View>
-                <Pressable
-                    style={[styles.actionBtn, { backgroundColor: colors.success }]}
-                    onPress={onClockIn}
-                >
-                    <Text style={styles.actionBtnText}>Clock In</Text>
-                </Pressable>
-            </View>
+        const closesIn = getCountdown(
+            new Date(new Date(todayShift!.start_time).getTime() + CLOCK_WINDOW_MINS * 60000).toISOString()
         );
+        ringProps = {
+            tone: 'success',
+            progress: 0,
+            pulsing: true,
+            icon: 'log-in-outline',
+            label: 'ready to clock in',
+            primaryText: `${formatTime(todayShift!.start_time)} – ${formatTime(todayShift!.end_time)}`,
+            secondaryText: `window closes in ${closesIn || 'soon'}`,
+            actionLabel: 'Clock In',
+            actionIcon: 'log-in-outline',
+            onAction: onClockIn,
+        };
     }
 
-    // ── Late — window passed, manager must clock in ───────────────────────────
     if (status === 'late') {
         const minsLate = getMinsLate(todayShift!.start_time);
-        return (
-            <View style={[styles.card, styles.cardError]}>
-                <View style={[styles.iconWrap, { backgroundColor: colors.error + '20' }]}>
-                    <Ionicons name="alert-circle-outline" size={22} color={colors.error} />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: colors.error }]}>
-                        Clock-in window closed
-                    </Text>
-                    <Text style={[styles.statusSub, { color: colors.error + 'BB' }]}>
-                        {minsLate} min late · shift started {formatTime(todayShift!.start_time)}
-                    </Text>
-                    <Text style={[styles.statusSub, { marginTop: 4, fontWeight: '600' }]}>
-                        Contact your manager to clock you in
-                    </Text>
-                </View>
-                {/* Disabled red button — no onPress */}
-                <View style={[styles.actionBtn, styles.actionBtnDisabled]}>
-                    <Ionicons name="lock-closed-outline" size={14} color="#fff" />
-                    <Text style={styles.actionBtnText}>Locked</Text>
-                </View>
-            </View>
-        );
+        ringProps = {
+            tone: 'danger',
+            progress: getElapsedProgress(todayShift!.start_time, todayShift!.end_time, now.getTime()),
+            icon: 'alert-circle-outline',
+            label: `${minsLate} min late`,
+            primaryText: `${formatTime(todayShift!.start_time)} – ${formatTime(todayShift!.end_time)}`,
+            secondaryText: 'contact your manager',
+            actionLabel: 'Locked',
+            actionIcon: 'lock-closed-outline',
+            actionDisabled: true,
+        };
     }
 
-    // ── Missed — shift ended, never clocked in ────────────────────────────────
     if (status === 'missed') {
-        return (
-            <View style={[styles.card, styles.cardError]}>
-                <View style={[styles.iconWrap, { backgroundColor: colors.error + '20' }]}>
-                    <Ionicons name="close-circle-outline" size={22} color={colors.error} />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: colors.error }]}>
-                        Shift missed
-                    </Text>
-                    <Text style={[styles.statusSub, { color: colors.error + 'BB' }]}>
-                        {formatTime(todayShift!.start_time)} – {formatTime(todayShift!.end_time)}
-                    </Text>
-                    <Text style={[styles.statusSub, { marginTop: 4, fontWeight: '600' }]}>
-                        Contact your manager if this is an error
-                    </Text>
-                </View>
-            </View>
-        );
+        ringProps = {
+            tone: 'danger',
+            progress: 1,
+            icon: 'close-circle-outline',
+            label: 'shift missed',
+            primaryText: `${formatTime(todayShift!.start_time)} – ${formatTime(todayShift!.end_time)}`,
+            secondaryText: 'contact your manager',
+        };
     }
 
-    // ── Working ───────────────────────────────────────────────────────────────
     if (status === 'working' && activeEntry) {
         const liveMinutes = getLiveMinutes(activeEntry.clock_in);
-        return (
-            <View style={[styles.card, styles.cardSuccess]}>
-                <View style={[styles.iconWrap, { backgroundColor: colors.success + '20' }]}>
-                    <Ionicons name="checkmark-circle-outline" size={22} color={colors.success} />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: colors.success }]}>
-                        On shift
-                    </Text>
-                    <Text style={styles.statusSub}>
-                        {formatDuration(liveMinutes)} · clocked in {formatTime(activeEntry.clock_in)}
-                    </Text>
-                    <Text style={[styles.statusSub, { marginTop: 2 }]}>
-                        Ends {formatTime(todayShift!.end_time)}
-                    </Text>
-                </View>
-                <View style={styles.btnCol}>
-                    <Pressable
-                        style={[styles.actionBtnSmall, { borderColor: colors.warning }]}
-                        onPress={onBreak}
-                    >
-                        <Text style={[styles.actionBtnSmallText, { color: colors.warning }]}>
-                            Break
-                        </Text>
-                    </Pressable>
-                    <Pressable
-                        style={[styles.actionBtnSmall, { borderColor: colors.error }]}
-                        onPress={onClockOut}
-                    >
-                        <Text style={[styles.actionBtnSmallText, { color: colors.error }]}>
-                            Out
-                        </Text>
-                    </Pressable>
-                </View>
-            </View>
-        );
+        ringProps = {
+            tone: 'success',
+            progress: getElapsedProgress(todayShift!.start_time, todayShift!.end_time, now.getTime()),
+            icon: 'checkmark-circle-outline',
+            label: 'on shift',
+            primaryText: formatDuration(liveMinutes),
+            secondaryText: `ends ${formatTime(todayShift!.end_time)}`,
+            actionLabel: 'Clock Out',
+            actionIcon: 'log-out-outline',
+            onAction: onClockOut,
+        };
+        secondaryAction = { label: 'Take a break', onPress: onBreak };
     }
 
-    // ── On break ──────────────────────────────────────────────────────────────
     if (status === 'on_break' && activeEntry && activeBreak) {
-        const breakMins   = getBreakElapsed(activeBreak.break_start);
-        const expectedEnd = getBreakExpectedEnd(
-            activeBreak.break_start,
-            settings?.break_duration_mins ?? 30
-        );
-        const isOverBreak = breakMins > (settings?.break_duration_mins ?? 30);
-        const liveMinutes = getLiveMinutes(activeEntry.clock_in);
-
-        return (
-            <View style={[styles.card, styles.cardWarning]}>
-                <View style={[styles.iconWrap, { backgroundColor: colors.warning + '20' }]}>
-                    <Ionicons name="cafe-outline" size={22} color={colors.warning} />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: colors.warning }]}>
-                        On break {isOverBreak ? '· Overdue!' : ''}
-                    </Text>
-                    <Text style={styles.statusSub}>
-                        Started {formatTime(activeBreak.break_start)}
-                        {'  ·  '}{formatDuration(breakMins)} elapsed
-                    </Text>
-                    <Text style={[
-                        styles.statusSub,
-                        { color: isOverBreak ? colors.error : colors.gray, marginTop: 2 },
-                    ]}>
-                        Expected back {expectedEnd}
-                    </Text>
-                    <Text style={[styles.statusSub, { marginTop: 2 }]}>
-                        Total worked: {formatDuration(liveMinutes - breakMins)}
-                    </Text>
-                </View>
-                <Pressable
-                    style={[styles.actionBtn, { backgroundColor: colors.warning }]}
-                    onPress={onBreak}
-                >
-                    <Text style={styles.actionBtnText}>End Break</Text>
-                </Pressable>
-            </View>
-        );
+        const breakMins    = getBreakElapsed(activeBreak.break_start);
+        const expectedEnd  = getBreakExpectedEnd(activeBreak.break_start, settings?.break_duration_mins ?? 30);
+        const isOverBreak  = breakMins > (settings?.break_duration_mins ?? 30);
+        ringProps = {
+            tone: isOverBreak ? 'danger' : 'warning',
+            progress: getElapsedProgress(todayShift!.start_time, todayShift!.end_time, now.getTime()),
+            icon: 'cafe-outline',
+            label: isOverBreak ? 'on break · overdue' : 'on break',
+            primaryText: formatDuration(breakMins),
+            secondaryText: `back by ${expectedEnd}`,
+            actionLabel: 'End Break',
+            actionIcon: 'play-outline',
+            onAction: onBreak,
+        };
     }
 
-    // ── Shift ended (clocked out successfully) ────────────────────────────────
     if (status === 'shift_ended') {
         const workedMins = activeEntry?.total_minutes ?? null;
-        return (
-            <View style={[styles.card, styles.cardNeutral]}>
-                <View style={[styles.iconWrap, { backgroundColor: colors.success + '15' }]}>
-                    <Ionicons name="checkmark-done-outline" size={22} color={colors.success} />
-                </View>
-                <View style={styles.textCol}>
-                    <Text style={[styles.statusTitle, { color: colors.success }]}>
-                        Shift ended
-                    </Text>
-                    {workedMins !== null && (
-                        <Text style={styles.statusSub}>
-                            Worked {formatDuration(workedMins)} today
-                        </Text>
-                    )}
-                    <Pressable onPress={onTimesheet}>
-                        <Text style={[
-                            styles.statusSub,
-                            { color: colors.primary, fontWeight: '600', marginTop: 4 },
-                        ]}>
-                            View timesheet →
-                        </Text>
-                    </Pressable>
-                </View>
-            </View>
-        );
+        ringProps = {
+            tone: 'success',
+            progress: 1,
+            icon: 'checkmark-done-outline',
+            label: 'shift complete',
+            primaryText: workedMins !== null ? formatDuration(workedMins) : 'shift complete',
+            secondaryText: `${formatTime(todayShift!.start_time)} – ${formatTime(todayShift!.end_time)}`,
+            actionLabel: 'View Timesheet',
+            actionIcon: 'document-text-outline',
+            onAction: onTimesheet,
+        };
     }
 
-    return null;
+    if (!ringProps) return null;
+
+    return (
+        <View style={styles.ringCard}>
+            <ShiftRing size={160} strokeWidth={12} {...ringProps} />
+            {secondaryAction && (
+                <Pressable onPress={secondaryAction.onPress} style={styles.secondaryLink} hitSlop={8}>
+                    <Ionicons name="cafe-outline" size={14} color={colors.warning} />
+                    <Text style={styles.secondaryLinkText}>{secondaryAction.label}</Text>
+                </Pressable>
+            )}
+        </View>
+    );
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-    card: {
+    // Flat card — only used for the "no shift today" state
+    flatCard: {
         flexDirection: 'row',
         alignItems:    'center',
         borderRadius:  14,
@@ -434,11 +357,7 @@ const styles = StyleSheet.create({
         gap:           10,
         marginBottom:  8,
     },
-    cardNeutral: { backgroundColor: '#F9FAFB',              borderColor: '#EFEFEF'              },
-    cardBlue:    { backgroundColor: '#6366F108',            borderColor: '#6366F130'            },
-    cardSuccess: { backgroundColor: colors.success + '08',  borderColor: colors.success + '30' },
-    cardWarning: { backgroundColor: colors.warning + '08',  borderColor: colors.warning + '30' },
-    cardError:   { backgroundColor: colors.error   + '08',  borderColor: colors.error   + '30' },
+    cardNeutral: { backgroundColor: '#F9FAFB', borderColor: '#EFEFEF' },
 
     iconWrap: {
         width:          42,
@@ -451,30 +370,24 @@ const styles = StyleSheet.create({
     textCol:     { flex: 1, minWidth: 0 },
     statusTitle: { fontSize: 13, fontWeight: '700', color: colors.text },
     statusSub:   { fontSize: 11, color: colors.gray, marginTop: 2 },
-    countdown:   { fontSize: 12, fontWeight: '700', marginTop: 4 },
 
-    actionBtn: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        gap:               4,
-        paddingHorizontal: 14,
-        paddingVertical:    8,
-        borderRadius:      999,
-        flexShrink:        0,
+    // Ring card — used for every other state
+    ringCard: {
+        backgroundColor: '#fff',
+        borderRadius:    16,
+        borderWidth:     1,
+        borderColor:     '#EFEFEF',
+        paddingVertical: 22,
+        paddingHorizontal: 16,
+        alignItems:      'center',
+        marginBottom:    8,
     },
-    actionBtnDisabled: {
-        backgroundColor: colors.error,
-        opacity:         0.5,
+    secondaryLink: {
+        flexDirection: 'row',
+        alignItems:    'center',
+        gap:           6,
+        marginTop:     14,
+        paddingVertical: 4,
     },
-    actionBtnText: { fontSize: 12, fontWeight: '700', color: '#fff' },
-
-    btnCol: { gap: 6, flexShrink: 0 },
-    actionBtnSmall: {
-        paddingHorizontal: 12,
-        paddingVertical:    6,
-        borderRadius:      999,
-        borderWidth:       1.5,
-        alignItems:        'center',
-    },
-    actionBtnSmallText: { fontSize: 11, fontWeight: '700' },
+    secondaryLinkText: { fontSize: 13, fontWeight: '600', color: colors.warning },
 });

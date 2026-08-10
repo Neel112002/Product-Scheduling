@@ -2,19 +2,18 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+// ── Navigators ────────────────────────────────────────────────────────────────
+import MainTabs from './MainTabs';
+
 // ── Screens ───────────────────────────────────────────────────────────────────
-import HomeScreen from '../screens/HomeScreen';
-import ProfileSettingsScreen from '../screens/ProfileSettingsScreen';
 import NotificationsScreen from '../screens/NotificationsScreen';
 import SwapShiftScreen from '../screens/SwapShiftScreen';
 import MySwapsScreen from '../screens/MySwapsScreen';
 import ClockInScreen from '../screens/ClockInScreen';
 import TimesheetScreen from '../screens/TimesheetScreen';
 import TeamStatusScreen from '../screens/TeamStatusScreen';
-import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import InviteStaffScreen from '../screens/admin/InviteStaffScreen';
 import TeamRolesScreen from '../screens/admin/TeamRolesScreen';
-import ScheduleScreen from '../screens/admin/ScheduleScreen';
 import WeekScheduleScreen from '../screens/admin/WeekScheduleScreen';
 import CreateShiftScreen from '../screens/admin/CreateShiftScreen';
 import ShiftDetailScreen from '../screens/admin/ShiftDetailScreen';
@@ -27,13 +26,16 @@ import AnalyticsScreen from '../screens/admin/AnalyticsScreen';
 import AvailabilityScreen from '../screens/AvailabilityScreen';
 import TimeOffScreen from '../screens/TimeOffScreen';
 import AdminRequestsScreen from '../screens/admin/AdminRequestsScreen';
+import ChatScreen from '../screens/ChatScreen';
 
 
 // ── Param list ────────────────────────────────────────────────────────────────
 export type AppStackParamList = {
-    // Employee
+    // Home-base (rendered inside MainTabs — kept here only as stack entry points)
     Dashboard: undefined;
-    ProfileSettings: undefined;
+    AdminDashboard: undefined;
+
+    // Employee
     Notifications: undefined;
     SwapShift: undefined;
     MySwaps: undefined;
@@ -44,10 +46,8 @@ export type AppStackParamList = {
     TimeOff: undefined;
 
     // Admin
-    AdminDashboard: undefined;
     InviteStaff: undefined;
     TeamRoles: undefined;
-    Schedule: { locationId?: number | null };
     WeekSchedule: { locationId?: number | null };
     CreateShift: { locationId: number; date: string };
     ShiftDetail: { shiftId: number; locationId: number };
@@ -57,7 +57,7 @@ export type AppStackParamList = {
     EmployeeProfile: { userId: number; locationId: number };
     Analytics: { locationId?: number };
     AdminRequests: { locationId?: number };
-
+    Chat: { channelId: number; channelName: string; channelType: string };
 
     // Shared
     CompleteProfile: undefined;
@@ -80,17 +80,19 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
                 animation: 'slide_from_right',
             }}
         >
-            {/* ── Employee screens ──────────────────────────────────────── */}
+            {/* ── Home base — both render MainTabs; it self-selects tabs by role ── */}
             <Stack.Screen
                 name="Dashboard"
-                component={HomeScreen}
+                component={MainTabs}
                 options={{ headerShown: false }}
             />
             <Stack.Screen
-                name="ProfileSettings"
-                component={ProfileSettingsScreen}
+                name="AdminDashboard"
+                component={MainTabs}
                 options={{ headerShown: false }}
             />
+
+            {/* ── Employee screens ──────────────────────────────────────── */}
             <Stack.Screen
                 name="Notifications"
                 component={NotificationsScreen}
@@ -124,11 +126,6 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
 
             {/* ── Admin screens ─────────────────────────────────────────── */}
             <Stack.Screen
-                name="AdminDashboard"
-                component={AdminDashboardScreen}
-                options={{ headerShown: false }}
-            />
-            <Stack.Screen
                 name="InviteStaff"
                 component={InviteStaffScreen}
                 options={{ headerShown: false }}
@@ -136,11 +133,6 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             <Stack.Screen
                 name="TeamRoles"
                 component={TeamRolesScreen}
-                options={{ headerShown: false }}
-            />
-            <Stack.Screen
-                name="Schedule"
-                component={ScheduleScreen}
                 options={{ headerShown: false }}
             />
             <Stack.Screen
@@ -210,6 +202,12 @@ export default function AppStack({ initialRoute = 'Dashboard' }: Props) {
             <Stack.Screen
                 name="AdminRequests"
                 component={AdminRequestsScreen}
+                options={{ headerShown: false }}
+            />
+
+            <Stack.Screen
+                name="Chat"
+                component={ChatScreen}
                 options={{ headerShown: false }}
             />
         </Stack.Navigator>

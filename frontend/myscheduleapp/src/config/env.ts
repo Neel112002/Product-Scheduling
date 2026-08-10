@@ -11,7 +11,7 @@ const IS_EMULATOR = false;
 
 export const API_BASE_URL =
     Platform.OS === 'android' && IS_EMULATOR
-        ? 'http://10.0.2.2:5000'        // Android emulator only
+        ? 'http://192.168.2.15:5000'        // Android emulator only
         : `http://${LOCAL_IP}:5000`;    // Physical device (iOS or Android)
 
 export const GRAPHQL_URL = `${API_BASE_URL}/graphql`;

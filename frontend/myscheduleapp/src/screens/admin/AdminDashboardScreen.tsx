@@ -46,7 +46,7 @@ function getWeekStart(): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function AdminDashboardScreen({ navigation }: any) {
-    const { logout, user }  = useContext(AuthContext);
+    const { user }  = useContext(AuthContext);
     const { unreadCount }   = useNotifications();
 
     const locationId = user?.primaryLocation?.id ?? null;
@@ -100,10 +100,43 @@ export default function AdminDashboardScreen({ navigation }: any) {
         } catch {}
     }, [locationId]);
 
+    // ── Fetch this week's shape — daily scheduled hours, Mon..Sun ──────────────
+    const [weekShape, setWeekShape] = useState<number[]>([0, 0, 0, 0, 0, 0, 0]);
+    const [weekShapeLoading, setWeekShapeLoading] = useState(true);
+
+    const fetchWeekShape = useCallback(async () => {
+        if (!locationId) {
+            setWeekShapeLoading(false);
+            return;
+        }
+        try {
+            const weekStart = getWeekStart();
+            const { data } = await ShiftsAPI.list(locationId, weekStart);
+            const daily = [0, 0, 0, 0, 0, 0, 0]; // Mon=0 .. Sun=6
+            (data?.shifts ?? []).forEach((s: any) => {
+                if (s.status === 'cancelled') return;
+                const start = new Date(s.start_time);
+                const end   = new Date(s.end_time);
+                const hours = Math.max(
+                    (end.getTime() - start.getTime()) / 3600000 - (s.break_minutes ?? 0) / 60,
+                    0
+                );
+                const dayIndex = (start.getDay() + 6) % 7; // JS Sun=0 → shift to Mon=0
+                daily[dayIndex] += hours;
+            });
+            setWeekShape(daily);
+        } catch {
+            setWeekShape([0, 0, 0, 0, 0, 0, 0]);
+        } finally {
+            setWeekShapeLoading(false);
+        }
+    }, [locationId]);
+
     useEffect(() => {
         fetchStats();
         fetchPendingCounts();
-    }, [fetchStats, fetchPendingCounts]);
+        fetchWeekShape();
+    }, [fetchStats, fetchPendingCounts, fetchWeekShape]);
 
     // ── Display values ────────────────────────────────────────────────────────
     const hoursDisplay = stats.loading ? null : stats.totalHours !== null ? `${stats.totalHours}h` : '—';
@@ -210,9 +243,6 @@ export default function AdminDashboardScreen({ navigation }: any) {
                                 </View>
                             )}
                         </Pressable>
-                        <Pressable onPress={logout} style={styles.iconBtn}>
-                            <Ionicons name="log-out-outline" size={22} color={colors.gray} />
-                        </Pressable>
                     </View>
                 </View>
 
@@ -222,6 +252,9 @@ export default function AdminDashboardScreen({ navigation }: any) {
                     <StatChip icon="people-outline"  label="Staff"     value={staffDisplay} loading={stats.loading} color="#10B981"        />
                     <StatChip icon="cash-outline"    label="Est. cost" value={costDisplay}  loading={stats.loading} color="#F59E0B"        />
                 </View>
+
+                {/* Shape of the week */}
+                <WeekShapeStrip data={weekShape} loading={weekShapeLoading} />
 
                 {/* Pending requests banner */}
                 {totalPending > 0 && (
@@ -277,6 +310,71 @@ function StatChip({
         </View>
     );
 }
+
+// ── WeekShapeStrip ────────────────────────────────────────────────────────────
+// A glanceable "shape of the week" — relative scheduled hours per day, today highlighted.
+
+const DAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+function WeekShapeStrip({ data, loading }: { data: number[]; loading: boolean }) {
+    const todayIndex = (new Date().getDay() + 6) % 7; // JS Sun=0 → Mon=0
+    const max = Math.max(...data, 1); // avoid divide-by-zero when the week is empty
+
+    return (
+        <View style={shapeStyles.card}>
+            <View style={shapeStyles.header}>
+                <Text style={shapeStyles.title}>Shape of the week</Text>
+                {loading && <ActivityIndicator size="small" color={colors.primary} />}
+            </View>
+            <View style={shapeStyles.barsRow}>
+                {data.map((hours, i) => {
+                    const isToday = i === todayIndex;
+                    const heightPct = Math.max((hours / max) * 100, hours > 0 ? 10 : 4);
+                    return (
+                        <View key={i} style={shapeStyles.barCol}>
+                            <View style={shapeStyles.barTrack}>
+                                <View
+                                    style={[
+                                        shapeStyles.barFill,
+                                        {
+                                            height: `${heightPct}%`,
+                                            backgroundColor: isToday ? colors.primary : colors.primary + '30',
+                                        },
+                                    ]}
+                                />
+                            </View>
+                            <Text style={[shapeStyles.dayLabel, isToday && shapeStyles.dayLabelToday]}>
+                                {DAY_LETTERS[i]}
+                            </Text>
+                        </View>
+                    );
+                })}
+            </View>
+        </View>
+    );
+}
+
+const shapeStyles = StyleSheet.create({
+    card: {
+        backgroundColor: '#fff', borderRadius: 14, padding: 14,
+        marginBottom: 20, borderWidth: 1, borderColor: '#EFEFEF',
+        shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 4, elevation: 1,
+    },
+    header: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 12,
+    },
+    title: { fontSize: 13, fontWeight: '700', color: colors.text },
+    barsRow: { flexDirection: 'row', height: 56, alignItems: 'flex-end', gap: 6 },
+    barCol: { flex: 1, alignItems: 'center', height: '100%', justifyContent: 'flex-end' },
+    barTrack: {
+        width: '100%', flex: 1, justifyContent: 'flex-end',
+        alignItems: 'center', backgroundColor: '#F8F8FC', borderRadius: 6, overflow: 'hidden',
+    },
+    barFill: { width: '100%', borderRadius: 6 },
+    dayLabel: { fontSize: 10, color: colors.gray, marginTop: 5, fontWeight: '600' },
+    dayLabelToday: { color: colors.primary, fontWeight: '800' },
+});
 
 // ── AdminTile ─────────────────────────────────────────────────────────────────
 

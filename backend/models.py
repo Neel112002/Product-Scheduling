@@ -402,3 +402,98 @@ class TimeOffRequest(db.Model):
             name="ck_timeoff_type",
         ),
     )
+    
+# ── 20. Channel ───────────────────────────────────────────────────────────────
+class Channel(db.Model):
+    __tablename__ = "channel"
+
+    channel_id   = db.Column(BigInteger, primary_key=True)
+    name         = db.Column(Text, nullable=False)
+    channel_type = db.Column(Text, nullable=False, default="general")
+    location_id  = db.Column(BigInteger, db.ForeignKey("location.loc_id",   ondelete="CASCADE"),  nullable=True)
+    created_by   = db.Column(BigInteger, db.ForeignKey("app_user.user_id",  ondelete="SET NULL"), nullable=True)
+    role_id      = db.Column(BigInteger, db.ForeignKey("role.role_id",      ondelete="CASCADE"),  nullable=True)
+    shift_id     = db.Column(BigInteger, db.ForeignKey("shift.shift_id",    ondelete="CASCADE"),  nullable=True)
+    is_broadcast = db.Column(Boolean, nullable=False, default=False)
+    description  = db.Column(Text, nullable=True)
+    created_at   = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    location = db.relationship("Location")
+    creator  = db.relationship("AppUser",  foreign_keys=[created_by])
+    role     = db.relationship("Role")
+    shift    = db.relationship("Shift",    foreign_keys=[shift_id])
+    members  = db.relationship("ChannelMember", back_populates="channel", cascade="all, delete-orphan")
+    messages = db.relationship("Message",       back_populates="channel", cascade="all, delete-orphan",
+                               order_by="Message.created_at")
+
+    __table_args__ = (
+        CheckConstraint(
+            "channel_type IN ('general','role','group','direct','broadcast','shift')",
+            name="ck_channel_type",
+        ),
+    )
+
+
+# ── 21. ChannelMember ─────────────────────────────────────────────────────────
+class ChannelMember(db.Model):
+    __tablename__ = "channel_member"
+
+    channel_id   = db.Column(BigInteger, db.ForeignKey("channel.channel_id",  ondelete="CASCADE"), primary_key=True)
+    user_id      = db.Column(BigInteger, db.ForeignKey("app_user.user_id",    ondelete="CASCADE"), primary_key=True)
+    is_admin     = db.Column(Boolean,  nullable=False, default=False)
+    joined_at    = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_read_at = db.Column(DateTime, nullable=True)
+
+    channel = db.relationship("Channel", back_populates="members")
+    user    = db.relationship("AppUser")
+
+
+# ── 22. Message ───────────────────────────────────────────────────────────────
+class Message(db.Model):
+    __tablename__ = "message"
+
+    message_id  = db.Column(BigInteger, primary_key=True)
+    channel_id  = db.Column(BigInteger, db.ForeignKey("channel.channel_id", ondelete="CASCADE"),  nullable=False)
+    sender_id   = db.Column(BigInteger, db.ForeignKey("app_user.user_id",   ondelete="SET NULL"), nullable=True)
+    content     = db.Column(Text,     nullable=False)
+    is_pinned   = db.Column(Boolean,  nullable=False, default=False)
+    reply_to_id = db.Column(BigInteger, db.ForeignKey("message.message_id", ondelete="SET NULL"), nullable=True)
+    is_deleted  = db.Column(Boolean,  nullable=False, default=False)
+    created_at  = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at  = db.Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    channel   = db.relationship("Channel",  back_populates="messages")
+    sender    = db.relationship("AppUser",  foreign_keys=[sender_id])
+    reply_to  = db.relationship("Message",  remote_side=[message_id], foreign_keys=[reply_to_id])
+    reads     = db.relationship("MessageRead",     back_populates="message", cascade="all, delete-orphan")
+    reactions = db.relationship("MessageReaction", back_populates="message", cascade="all, delete-orphan")
+
+
+# ── 23. MessageRead ───────────────────────────────────────────────────────────
+class MessageRead(db.Model):
+    __tablename__ = "message_read"
+
+    message_id = db.Column(BigInteger, db.ForeignKey("message.message_id", ondelete="CASCADE"), primary_key=True)
+    user_id    = db.Column(BigInteger, db.ForeignKey("app_user.user_id",   ondelete="CASCADE"), primary_key=True)
+    read_at    = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    message = db.relationship("Message", back_populates="reads")
+    user    = db.relationship("AppUser")
+
+
+# ── 24. MessageReaction ───────────────────────────────────────────────────────
+class MessageReaction(db.Model):
+    __tablename__ = "message_reaction"
+
+    reaction_id = db.Column(BigInteger, primary_key=True)
+    message_id  = db.Column(BigInteger, db.ForeignKey("message.message_id", ondelete="CASCADE"), nullable=False)
+    user_id     = db.Column(BigInteger, db.ForeignKey("app_user.user_id",   ondelete="CASCADE"), nullable=False)
+    emoji       = db.Column(Text, nullable=False)
+    created_at  = db.Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    message = db.relationship("Message", back_populates="reactions")
+    user    = db.relationship("AppUser")
+
+    __table_args__ = (
+        db.UniqueConstraint("message_id", "user_id", "emoji", name="uq_reaction"),
+    )

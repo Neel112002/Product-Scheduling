@@ -17,43 +17,43 @@ import {
     RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons }     from '@expo/vector-icons';
-import { colors }       from '../../theme/colors';
-import { ShiftsAPI }    from '../../api/api';
-import { AuthContext }  from '../../context/AuthContext';
-import { useQuery }     from '@apollo/client/react';
+import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../../theme/colors';
+import { ShiftsAPI } from '../../api/api';
+import { AuthContext } from '../../context/AuthContext';
+import { useQuery } from '@apollo/client/react';
 import { MY_LOCATIONS_QUERY } from '../../graphql/operations';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ShiftDetail = {
-    shift_id:      number;
-    location_id:   number;
-    role?:         string | null;
-    start_time:    string;
-    end_time:      string;
+    shift_id: number;
+    location_id: number;
+    role?: string | null;
+    start_time: string;
+    end_time: string;
     break_minutes: number;
-    notes?:        string | null;
-    status:        'draft' | 'published' | 'cancelled';
+    notes?: string | null;
+    status: 'draft' | 'published' | 'cancelled';
     created_by_ai: boolean;
     published_at?: string | null;
-    assignments:   { user_id: number; assigned_at: string }[];
+    assignments: { user_id: number; assigned_at: string }[];
 };
 
 type LaborCost = {
     total_shifts: number;
-    total_hours:  number;
-    total_cost:   number;
-    hourly_rate:  number;
+    total_hours: number;
+    total_cost: number;
+    hourly_rate: number;
 };
 
-type Location        = { id: number; name: string };
+type Location = { id: number; name: string };
 type MyLocationsData = { myLocations: Location[] };
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 function getWeekStart(date: Date): Date {
-    const d   = new Date(date);
+    const d = new Date(date);
     const day = d.getDay();
     d.setDate(d.getDate() - day + (day === 0 ? -6 : 1));
     d.setHours(0, 0, 0, 0);
@@ -86,8 +86,8 @@ function formatTime(iso: string): string {
 
 function formatWeekRange(start: Date): string {
     const end = addDays(start, 6);
-    const s   = start.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
-    const e   = end.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
+    const s = start.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    const e = end.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
     return `${s} – ${e}`;
 }
 
@@ -95,8 +95,8 @@ function isToday(date: Date): boolean {
     const today = new Date();
     return (
         date.getFullYear() === today.getFullYear() &&
-        date.getMonth()    === today.getMonth()    &&
-        date.getDate()     === today.getDate()
+        date.getMonth() === today.getMonth() &&
+        date.getDate() === today.getDate()
     );
 }
 
@@ -112,12 +112,12 @@ export default function ScheduleScreen({ navigation, route }: any) {
     );
     const canEdit = isManager && !readOnly;
 
-    const [weekStart,          setWeekStart]          = useState<Date>(() => getWeekStart(new Date()));
-    const [shifts,             setShifts]             = useState<ShiftDetail[]>([]);
-    const [laborCost,          setLaborCost]          = useState<LaborCost | null>(null);
-    const [loading,            setLoading]            = useState(false);
-    const [refreshing,         setRefreshing]         = useState(false);
-    const [publishing,         setPublishing]         = useState(false);
+    const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date()));
+    const [shifts, setShifts] = useState<ShiftDetail[]>([]);
+    const [laborCost, setLaborCost] = useState<LaborCost | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const [publishing, setPublishing] = useState(false);
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
         route?.params?.locationId ?? null
     );
@@ -142,7 +142,7 @@ export default function ScheduleScreen({ navigation, route }: any) {
     const fetchData = useCallback(async (loc: number, ws: Date) => {
         setLoading(true);
         try {
-            const weekStr            = formatDate(ws);
+            const weekStr = formatDate(ws);
             const [shiftsRes, costRes] = await Promise.all([
                 ShiftsAPI.list(loc, weekStr),
                 canEdit ? ShiftsAPI.laborCost(loc, weekStr) : Promise.resolve({ data: null }),
@@ -170,7 +170,7 @@ export default function ScheduleScreen({ navigation, route }: any) {
     // ── Week navigation ───────────────────────────────────────────────────────
     const prevWeek = () => setWeekStart(w => addDays(w, -7));
     const nextWeek = () => setWeekStart(w => addDays(w, 7));
-    const goToday  = () => setWeekStart(getWeekStart(new Date()));
+    const goToday = () => setWeekStart(getWeekStart(new Date()));
 
     // ── Week days ─────────────────────────────────────────────────────────────
     const weekDays = useMemo(
@@ -233,9 +233,11 @@ export default function ScheduleScreen({ navigation, route }: any) {
 
             {/* Top bar */}
             <View style={styles.topBar}>
-                <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <Ionicons name="arrow-back" size={22} color={colors.text} />
-                </Pressable>
+                {navigation.canGoBack() && (
+                    <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                        <Ionicons name="arrow-back" size={22} color={colors.text} />
+                    </Pressable>
+                )}
                 <Text style={styles.screenTitle}>
                     {canEdit ? 'Schedule' : 'My Schedule'}
                 </Text>
@@ -347,9 +349,9 @@ export default function ScheduleScreen({ navigation, route }: any) {
                     }
                 >
                     {weekDays.map(day => {
-                        const key       = formatDate(day);
+                        const key = formatDate(day);
                         const dayShifts = shiftsByDay.get(key) ?? [];
-                        const today     = isToday(day);
+                        const today = isToday(day);
                         const hasShifts = dayShifts.length > 0;
 
                         return (
@@ -380,7 +382,7 @@ export default function ScheduleScreen({ navigation, route }: any) {
                                             style={styles.addShiftBtn}
                                             onPress={() => navigation.navigate('CreateShift', {
                                                 locationId: selectedLocationId,
-                                                date:       key,
+                                                date: key,
                                             })}
                                         >
                                             <Ionicons name="add" size={18} color={colors.primary} />
@@ -396,7 +398,7 @@ export default function ScheduleScreen({ navigation, route }: any) {
                                         canEdit={canEdit}
                                         onPress={() => canEdit
                                             ? navigation.navigate('ShiftDetail', {
-                                                shiftId:    shift.shift_id,
+                                                shiftId: shift.shift_id,
                                                 locationId: selectedLocationId,
                                             })
                                             : undefined
@@ -416,7 +418,7 @@ export default function ScheduleScreen({ navigation, route }: any) {
                         style={styles.createBtn}
                         onPress={() => navigation.navigate('CreateShift', {
                             locationId: selectedLocationId,
-                            date:       formatDate(new Date()),
+                            date: formatDate(new Date()),
                         })}
                     >
                         <Ionicons name="add" size={18} color={colors.primary} />
@@ -463,7 +465,7 @@ function LaborItem({ value, label, valueColor }: {
 }
 
 const laborStyles = StyleSheet.create({
-    item:  { alignItems: 'center' },
+    item: { alignItems: 'center' },
     value: { fontSize: 15, fontWeight: '800', color: colors.text },
     label: { fontSize: 11, color: colors.gray, marginTop: 1 },
 });
@@ -471,20 +473,29 @@ const laborStyles = StyleSheet.create({
 // ── ShiftCard ─────────────────────────────────────────────────────────────────
 
 function ShiftCard({ shift, onPress, canEdit }: {
-    shift:   ShiftDetail;
+    shift: ShiftDetail;
     onPress: () => void;
     canEdit: boolean;
 }) {
-    const isDraft     = shift.status === 'draft';
+    const isDraft = shift.status === 'draft';
     const isPublished = shift.status === 'published';
     const isCancelled = shift.status === 'cancelled';
 
     const statusColor =
-        isDraft     ? colors.warning :
-        isPublished ? colors.success :
-        colors.gray;
+        isDraft ? colors.warning :
+            isPublished ? colors.success :
+                colors.gray;
 
     const statusLabel = isDraft ? 'DRAFT' : isPublished ? 'LIVE' : 'CANCELLED';
+
+    // ── Is this shift happening right now? If so, show elapsed-time progress ──
+    const now   = Date.now();
+    const start = new Date(shift.start_time).getTime();
+    const end   = new Date(shift.end_time).getTime();
+    const isLiveNow = isPublished && now >= start && now < end;
+    const liveProgress = isLiveNow
+        ? Math.min(Math.max((now - start) / (end - start), 0), 1)
+        : 0;
 
     return (
         <Pressable
@@ -492,7 +503,7 @@ function ShiftCard({ shift, onPress, canEdit }: {
                 styles.shiftCard,
                 { borderLeftColor: statusColor },
                 pressed && canEdit && { opacity: 0.85 },
-                isCancelled      && { opacity: 0.5  },
+                isCancelled && { opacity: 0.5 },
             ]}
             onPress={onPress}
             disabled={!canEdit}
@@ -506,7 +517,7 @@ function ShiftCard({ shift, onPress, canEdit }: {
                         <Ionicons name="sparkles" size={10} color={statusColor} />
                     )}
                     <Text style={[styles.statusText, { color: statusColor }]}>
-                        {statusLabel}
+                        {isLiveNow ? 'HAPPENING NOW' : statusLabel}
                     </Text>
                 </View>
             </View>
@@ -535,6 +546,12 @@ function ShiftCard({ shift, onPress, canEdit }: {
             {shift.notes ? (
                 <Text style={styles.shiftNotes} numberOfLines={1}>{shift.notes}</Text>
             ) : null}
+
+            {isLiveNow && (
+                <View style={styles.liveTrack}>
+                    <View style={[styles.liveFill, { width: `${liveProgress * 100}%` }]} />
+                </View>
+            )}
         </Pressable>
     );
 }
@@ -545,209 +562,224 @@ const styles = StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
 
     topBar: {
-        flexDirection:     'row',
-        alignItems:        'center',
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: 16,
-        paddingVertical:   10,
+        paddingVertical: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        backgroundColor:   '#fff',
+        backgroundColor: '#fff',
     },
-    backBtn:      { padding: 4, marginRight: 8 },
-    screenTitle:  { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
+    backBtn: { padding: 4, marginRight: 8 },
+    screenTitle: { flex: 1, fontSize: 18, fontWeight: '700', color: colors.text },
     todayBtn: {
         paddingHorizontal: 12,
-        paddingVertical:    5,
-        borderRadius:      999,
-        borderWidth:       1,
-        borderColor:       colors.primary,
+        paddingVertical: 5,
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: colors.primary,
     },
     todayBtnText: { fontSize: 12, color: colors.primary, fontWeight: '600' },
 
     bulkBtn: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        gap:               4,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
         paddingHorizontal: 12,
-        paddingVertical:    6,
-        borderRadius:      999,
-        backgroundColor:   colors.primary,
+        paddingVertical: 6,
+        borderRadius: 999,
+        backgroundColor: colors.primary,
     },
     bulkBtnText: { fontSize: 12, color: '#fff', fontWeight: '700' },
 
     locationBar: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        gap:               6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
         paddingHorizontal: 16,
-        paddingVertical:   8,
-        backgroundColor:   colors.subtleAccent,
+        paddingVertical: 8,
+        backgroundColor: colors.subtleAccent,
         borderBottomWidth: 1,
         borderBottomColor: '#E8E8F0',
     },
-    locationName:     { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
+    locationName: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
     locationDropdown: {
-        backgroundColor:   '#fff',
+        backgroundColor: '#fff',
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        elevation:         4,
-        shadowColor:       '#000',
-        shadowOpacity:     0.06,
-        shadowRadius:      4,
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 4,
     },
     locationOption: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        justifyContent:    'space-between',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 20,
-        paddingVertical:   11,
+        paddingVertical: 11,
         borderBottomWidth: 1,
         borderBottomColor: '#F5F5F5',
     },
     locationOptionActive: { backgroundColor: colors.subtleAccent },
-    locationOptionText:   { fontSize: 14, color: colors.text },
+    locationOptionText: { fontSize: 14, color: colors.text },
 
     weekNav: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        justifyContent:    'space-between',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         paddingHorizontal: 8,
-        paddingVertical:   8,
+        paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        backgroundColor:   '#fff',
+        backgroundColor: '#fff',
     },
     weekNavBtn: { padding: 8 },
-    weekLabel:  { fontSize: 13, fontWeight: '700', color: colors.text },
+    weekLabel: { fontSize: 13, fontWeight: '700', color: colors.text },
 
     laborBanner: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        justifyContent:    'space-around',
-        backgroundColor:   colors.subtleCard,
-        paddingVertical:   8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-around',
+        backgroundColor: colors.subtleCard,
+        paddingVertical: 8,
         borderBottomWidth: 1,
         borderBottomColor: '#EFEFEF',
     },
     laborDivider: { width: 1, height: 24, backgroundColor: '#E0E0E0' },
 
-    scroll:           { flex: 1 },
+    scroll: { flex: 1 },
     loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-    loadingText:      { fontSize: 13, color: colors.gray },
+    loadingText: { fontSize: 13, color: colors.gray },
 
     dayBlock: {
         marginHorizontal: 16,
-        marginTop:        10,
-        borderRadius:     12,
-        overflow:         'hidden',
-        borderWidth:      1,
-        borderColor:      '#F0F0F0',
-        backgroundColor:  '#FAFAFA',
+        marginTop: 10,
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: '#F0F0F0',
+        backgroundColor: '#FAFAFA',
     },
     dayHeader: {
-        flexDirection:     'row',
-        alignItems:        'center',
+        flexDirection: 'row',
+        alignItems: 'center',
         paddingHorizontal: 12,
-        paddingVertical:   8,
-        backgroundColor:   '#fff',
+        paddingVertical: 8,
+        backgroundColor: '#fff',
         borderBottomWidth: 1,
         borderBottomColor: '#F0F0F0',
-        gap:               8,
+        gap: 8,
     },
     dayBadge: {
-        alignItems:      'center',
-        width:           36,
+        alignItems: 'center',
+        width: 36,
         paddingVertical: 3,
-        borderRadius:    8,
+        borderRadius: 8,
         backgroundColor: '#F3F4F6',
     },
     dayBadgeToday: { backgroundColor: colors.primary },
-    dayShort:      { fontSize: 9,  fontWeight: '700', color: colors.gray },
+    dayShort: { fontSize: 9, fontWeight: '700', color: colors.gray },
     dayShortToday: { color: '#fff' },
-    dayNum:        { fontSize: 15, fontWeight: '800', color: colors.text },
-    dayNumToday:   { color: '#fff' },
-    shiftCount:    { flex: 1, fontSize: 12, color: colors.gray },
+    dayNum: { fontSize: 15, fontWeight: '800', color: colors.text },
+    dayNumToday: { color: '#fff' },
+    shiftCount: { flex: 1, fontSize: 12, color: colors.gray },
     addShiftBtn: {
-        width:           30,
-        height:          30,
-        borderRadius:    15,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
         backgroundColor: colors.subtleAccent,
-        alignItems:      'center',
-        justifyContent:  'center',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 
     shiftCard: {
-        margin:          8,
-        padding:         10,
-        borderRadius:    10,
+        margin: 8,
+        padding: 10,
+        paddingBottom: 13,
+        borderRadius: 10,
         backgroundColor: '#fff',
         borderLeftWidth: 3,
         borderLeftColor: colors.primary,
-        shadowColor:     '#000',
-        shadowOpacity:   0.03,
-        shadowRadius:    3,
-        elevation:       1,
+        shadowColor: '#000',
+        shadowOpacity: 0.03,
+        shadowRadius: 3,
+        elevation: 1,
+        overflow: 'hidden',
+        position: 'relative',
+    },
+    liveTrack: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 3,
+        backgroundColor: colors.inputBorder,
+    },
+    liveFill: {
+        height: 3,
+        backgroundColor: colors.primary,
     },
     shiftCardTop: {
-        flexDirection:  'row',
-        alignItems:     'center',
+        flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom:   5,
+        marginBottom: 5,
     },
-    shiftTime:  { fontSize: 13, fontWeight: '700', color: colors.text },
+    shiftTime: { fontSize: 13, fontWeight: '700', color: colors.text },
     statusBadge: {
-        flexDirection:     'row',
-        alignItems:        'center',
-        gap:               3,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
         paddingHorizontal: 7,
-        paddingVertical:   2,
-        borderRadius:      999,
+        paddingVertical: 2,
+        borderRadius: 999,
     },
-    statusText:      { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+    statusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
     shiftCardBottom: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     shiftMeta: { flexDirection: 'row', alignItems: 'center', gap: 3 },
     shiftMetaText: { fontSize: 11, color: colors.gray },
     shiftNotes: { marginTop: 4, fontSize: 11, color: colors.gray, fontStyle: 'italic' },
 
     bottomBar: {
-        position:          'absolute',
-        bottom:            0,
-        left:              0,
-        right:             0,
-        flexDirection:     'row',
-        gap:               10,
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        gap: 10,
         paddingHorizontal: 16,
-        paddingVertical:   10,
-        paddingBottom:     24,
-        backgroundColor:   '#fff',
-        borderTopWidth:    1,
-        borderTopColor:    '#F0F0F0',
-        shadowColor:       '#000',
-        shadowOpacity:     0.06,
-        shadowRadius:      8,
-        elevation:         8,
+        paddingVertical: 10,
+        paddingBottom: 24,
+        backgroundColor: '#fff',
+        borderTopWidth: 1,
+        borderTopColor: '#F0F0F0',
+        shadowColor: '#000',
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 8,
     },
     createBtn: {
-        flex:            1,
-        flexDirection:   'row',
-        alignItems:      'center',
-        justifyContent:  'center',
-        gap:             6,
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
         paddingVertical: 11,
-        borderRadius:    999,
-        borderWidth:     1.5,
-        borderColor:     colors.primary,
+        borderRadius: 999,
+        borderWidth: 1.5,
+        borderColor: colors.primary,
         backgroundColor: '#fff',
     },
     createBtnText: { fontSize: 13, fontWeight: '700', color: colors.primary },
     publishBtn: {
-        flex:            1,
-        flexDirection:   'row',
-        alignItems:      'center',
-        justifyContent:  'center',
-        gap:             6,
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
         paddingVertical: 11,
-        borderRadius:    999,
+        borderRadius: 999,
         backgroundColor: colors.success,
     },
     publishBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },

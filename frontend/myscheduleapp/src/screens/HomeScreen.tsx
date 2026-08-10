@@ -13,6 +13,8 @@ import {
     Text,
     StyleSheet,
     Pressable,
+    Modal,
+    FlatList,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +30,7 @@ import { ShiftsAPI, TimeEntryAPI, AdminAPI } from '../api/api';
 import { useNotifications } from '../hooks/useNotifications';
 import { MY_LOCATIONS_QUERY } from '../graphql/operations';
 
+import PulsingDot from '../components/home/PulsingDot';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type ShiftDetail = {
@@ -139,7 +142,7 @@ function calcHours(start: string, end: string, breakMins: number): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function HomeScreen({ navigation }: any) {
-    const { logout, user: authUser } = useContext(AuthContext);
+    const { user: authUser } = useContext(AuthContext);
     const { notifications, unreadCount } = useNotifications();
 
     const [myShifts, setMyShifts] = useState<ShiftDetail[]>([]);
@@ -153,6 +156,7 @@ export default function HomeScreen({ navigation }: any) {
     const [selectedLocationId, setSelectedLocationId] = useState<number | null>(
         authUser?.primaryLocation?.id ?? null,
     );
+    const [showLocationPicker, setShowLocationPicker] = useState(false);
 
     // ── Locations — REST primary, GraphQL as supplement ───────────────────────
     const fetchLocations = useCallback(async () => {
@@ -349,18 +353,22 @@ export default function HomeScreen({ navigation }: any) {
             >
                 {/* Header */}
                 <View style={styles.headerRow}>
-                    <HeaderGreeting
-                        name={displayName}
-                        initials={initials}
-                        onAvatarPress={() => navigation.navigate('ProfileSettings')}
-                        locations={locationNames.length ? locationNames : [locationName]}
-                        selectedLocation={locationName}
-                        onChangeLocation={(name: string) => {
-                            const loc = locations.find(l => l.name === name);
-                            if (loc) setSelectedLocationId(loc.id);
-                        }}
-                        onLogout={logout}
-                    />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                        <HeaderGreeting
+                            name={displayName}
+                            initials={initials}
+                        />
+                    </View>
+                    <Pressable
+                        style={styles.locationPill}
+                        onPress={() => setShowLocationPicker(true)}
+                    >
+                        <Ionicons name="location-outline" size={14} color={colors.primary} />
+                        <Text style={styles.locationPillText} numberOfLines={1}>
+                            {locationName}
+                        </Text>
+                        <Ionicons name="chevron-down" size={14} color={colors.gray} />
+                    </Pressable>
                     <Pressable
                         style={styles.bellBtn}
                         onPress={() => navigation.navigate('Notifications')}
@@ -500,6 +508,59 @@ export default function HomeScreen({ navigation }: any) {
 
                 <View style={{ height: 40 }} />
             </ScrollView>
+
+            {/* Location picker — moved here from HeaderGreeting so it can sit beside the bell */}
+            <Modal
+                visible={showLocationPicker}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setShowLocationPicker(false)}
+            >
+                <Pressable style={styles.locationBackdrop} onPress={() => setShowLocationPicker(false)}>
+                    <View />
+                </Pressable>
+                <View style={styles.locationSheet}>
+                    <View style={styles.locationSheetHeader}>
+                        <Text style={styles.locationSheetTitle}>Select location</Text>
+                        <Pressable onPress={() => setShowLocationPicker(false)} hitSlop={8}>
+                            <Ionicons name="close" size={20} color={colors.gray} />
+                        </Pressable>
+                    </View>
+                    <FlatList
+                        data={locationNames.length ? locationNames : [locationName]}
+                        keyExtractor={(item) => item}
+                        ItemSeparatorComponent={() => <View style={styles.locationSep} />}
+                        renderItem={({ item }) => {
+                            const active = item === locationName;
+                            return (
+                                <Pressable
+                                    onPress={() => {
+                                        const loc = locations.find(l => l.name === item);
+                                        if (loc) setSelectedLocationId(loc.id);
+                                        setShowLocationPicker(false);
+                                    }}
+                                    style={({ pressed }) => [
+                                        styles.locationRow,
+                                        pressed && { backgroundColor: '#F7F7F7' },
+                                    ]}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.locationRowText,
+                                            active && { color: colors.primary, fontWeight: '700' },
+                                        ]}
+                                    >
+                                        {item}
+                                    </Text>
+                                    {active && (
+                                        <Ionicons name="checkmark" size={18} color={colors.primary} />
+                                    )}
+                                </Pressable>
+                            );
+                        }}
+                    />
+                </View>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -614,7 +675,13 @@ function TeamStatusCard({
                                                 {member.initials}
                                             </Text>
                                         </View>
-                                        <View style={[teamStyles.statusDot, { backgroundColor: cfg.color }]} />
+                                        <View style={teamStyles.statusDotWrap}>
+                                            <PulsingDot
+                                                color={cfg.color}
+                                                size={12}
+                                                active={member.status === 'working'}
+                                            />
+                                        </View>
                                     </View>
                                     <Text style={teamStyles.memberName} numberOfLines={1}>
                                         {member.name.split(' ')[0]}
@@ -722,6 +789,11 @@ const teamStyles = StyleSheet.create({
         borderWidth: 2,
         borderColor: '#fff',
     },
+    statusDotWrap: {
+        position: 'absolute',
+        bottom: 1,
+        right: 1,
+    },
     memberName: { fontSize: 12, fontWeight: '600', color: colors.text, maxWidth: 70 },
     memberStatus: { fontSize: 10, fontWeight: '600' },
     legend: {
@@ -747,8 +819,26 @@ const styles = StyleSheet.create({
 
     headerRow: {
         flexDirection: 'row',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         marginBottom: 16,
+    },
+    locationPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        maxWidth: 130,
+        paddingHorizontal: 9,
+        paddingVertical: 7,
+        borderRadius: 999,
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#EFEFEF',
+    },
+    locationPillText: {
+        fontSize: 12,
+        color: colors.text,
+        fontWeight: '600',
+        flexShrink: 1,
     },
     bellBtn: {
         width: 40,
@@ -758,7 +848,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginLeft: 8,
-        marginTop: 4,
         borderWidth: 1,
         borderColor: '#EFEFEF',
         position: 'relative',
@@ -777,6 +866,44 @@ const styles = StyleSheet.create({
         borderColor: '#F8F8FC',
     },
     bellBadgeText: { fontSize: 9, color: '#fff', fontWeight: '800' },
+
+    locationBackdrop: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.15)',
+    },
+    locationSheet: {
+        position: 'absolute',
+        left: 16,
+        right: 16,
+        top: 110,
+        borderRadius: 14,
+        backgroundColor: colors.background,
+        borderWidth: 1,
+        borderColor: '#00000010',
+        padding: 10,
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 12,
+        elevation: 4,
+    },
+    locationSheetHeader: {
+        paddingHorizontal: 4,
+        paddingVertical: 6,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    locationSheetTitle: { color: colors.text, fontWeight: '700' },
+    locationSep: { height: 1, backgroundColor: colors.inputBorder, opacity: 0.7 },
+    locationRow: {
+        paddingVertical: 10,
+        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    locationRowText: { color: colors.text, fontSize: 14 },
 
     statsBar: {
         flexDirection: 'row',
