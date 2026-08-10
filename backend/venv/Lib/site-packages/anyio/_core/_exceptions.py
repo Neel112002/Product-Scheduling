@@ -136,8 +136,11 @@ class WouldBlock(Exception):
 
 class NoEventLoopError(RuntimeError):
     """
-    Raised by :func:`.from_thread.run` and :func:`.from_thread.run_sync` if
-    not calling from an AnyIO worker thread, and no ``token`` was passed.
+    Raised by several functions that require an event loop to be running in the current
+    thread when there is no running event loop.
+
+    This is also raised by :func:`.from_thread.run` and :func:`.from_thread.run_sync`
+    if not calling from an AnyIO worker thread, and no ``token`` was passed.
     """
 
 
@@ -151,3 +154,24 @@ class RunFinishedError(RuntimeError):
         super().__init__(
             "The event loop associated with the given token has already finished"
         )
+
+
+class TaskFailed(Exception):
+    """
+    Raised when awaiting on, or attempting to access the return value of, a
+    :class:`.TaskHandle` that raised an exception.
+    """
+
+
+class TaskCancelled(TaskFailed):
+    """
+    Raised when awaiting on, or attempting to access the return value of, a
+    :class:`.TaskHandle` that was cancelled.
+    """
+
+
+class TaskNotFinished(Exception):
+    """
+    Raised when attempting to access the return value or exception of a
+    :class:`.TaskHandle` that is still pending completion.
+    """

@@ -92,6 +92,7 @@ from .definition import (
     GraphQLArgumentMap,
     GraphQLEnumValue,
     GraphQLEnumValueMap,
+    GraphQLEnumValuesDefinition,
     GraphQLField,
     GraphQLFieldMap,
     GraphQLInputField,
@@ -132,6 +133,7 @@ from .directives import (
     GraphQLSkipDirective,
     GraphQLDeprecatedDirective,
     GraphQLSpecifiedByDirective,
+    GraphQLOneOfDirective,
     # Keyword Args
     GraphQLDirectiveKwargs,
     # Constant Deprecation Reason
@@ -244,6 +246,7 @@ __all__ = [
     "GraphQLArgumentMap",
     "GraphQLEnumValue",
     "GraphQLEnumValueMap",
+    "GraphQLEnumValuesDefinition",
     "GraphQLField",
     "GraphQLFieldMap",
     "GraphQLInputField",
@@ -276,6 +279,7 @@ __all__ = [
     "GraphQLSkipDirective",
     "GraphQLDeprecatedDirective",
     "GraphQLSpecifiedByDirective",
+    "GraphQLOneOfDirective",
     "GraphQLDirectiveKwargs",
     "DEFAULT_DEPRECATION_REASON",
     "is_specified_scalar_type",

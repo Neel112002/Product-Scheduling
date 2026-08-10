@@ -17,15 +17,18 @@ class PrintedNode:
     """A union type for all nodes that have been processed by the printer."""
 
     alias: str
+    argument_name: str
     arguments: Strings
     block: bool
     default_value: str
     definitions: Strings
     description: str
     directives: str
+    field_name: str
     fields: Strings
     interfaces: Strings
     locations: Strings
+    member_name: str
     name: str
     operation: OperationType
     operation_types: Strings
@@ -66,8 +69,12 @@ class PrintAstVisitor(Visitor):
 
     @staticmethod
     def leave_operation_definition(node: PrintedNode, *_args: Any) -> str:
-        var_defs = wrap("(", join(node.variable_definitions, ", "), ")")
-        prefix = join(
+        var_defs = (
+            wrap("(\n", join(node.variable_definitions, "\n"), "\n)")
+            if has_multiline_items(node.variable_definitions)
+            else wrap("(", join(node.variable_definitions, ", "), ")")
+        )
+        prefix = wrap("", node.description, "\n") + join(
             (
                 node.operation.value,
                 join((node.name, var_defs)),
@@ -82,7 +89,7 @@ class PrintAstVisitor(Visitor):
     @staticmethod
     def leave_variable_definition(node: PrintedNode, *_args: Any) -> str:
         return (
-            f"{node.variable}: {node.type}"
+            wrap("", node.description, "\n") + f"{node.variable}: {node.type}"
             f"{wrap(' = ', node.default_value)}"
             f"{wrap(' ', join(node.directives, ' '))}"
         )
@@ -127,7 +134,7 @@ class PrintAstVisitor(Visitor):
     def leave_fragment_definition(node: PrintedNode, *_args: Any) -> str:
         # Note: fragment variable definitions are deprecated and will be removed in v3.3
         return (
-            f"fragment {node.name}"
+            wrap("", node.description, "\n") + f"fragment {node.name}"
             f"{wrap('(', join(node.variable_definitions, ', '), ')')}"
             f" on {node.type_condition}"
             f" {wrap('', join(node.directives, ' '), ' ')}"
@@ -311,11 +318,12 @@ class PrintAstVisitor(Visitor):
             if has_multiline_items(args)
             else wrap("(", join(args, ", "), ")")
         )
+        directives = wrap(" ", join(node.directives, " "))
         repeatable = " repeatable" if node.repeatable else ""
         locations = join(node.locations, " | ")
         return (
             wrap("", node.description, "\n")
-            + f"directive @{node.name}{args}{repeatable} on {locations}"
+            + f"directive @{node.name}{args}{directives}{repeatable} on {locations}"
         )
 
     @staticmethod
@@ -324,6 +332,10 @@ class PrintAstVisitor(Visitor):
             ("extend schema", join(node.directives, " "), block(node.operation_types)),
             " ",
         )
+
+    @staticmethod
+    def leave_directive_extension(node: PrintedNode, *_args: Any) -> str:
+        return join((f"extend directive @{node.name}", join(node.directives, " ")), " ")
 
     @staticmethod
     def leave_scalar_type_extension(node: PrintedNode, *_args: Any) -> str:
@@ -380,6 +392,30 @@ class PrintAstVisitor(Visitor):
             ("extend input", node.name, join(node.directives, " "), block(node.fields)),
             " ",
         )
+
+    # Schema Coordinates
+
+    @staticmethod
+    def leave_type_coordinate(node: PrintedNode, *_args: Any) -> str:
+        return node.name
+
+    @staticmethod
+    def leave_member_coordinate(node: PrintedNode, *_args: Any) -> str:
+        return join((node.name, wrap(".", node.member_name)))
+
+    @staticmethod
+    def leave_argument_coordinate(node: PrintedNode, *_args: Any) -> str:
+        return join(
+            (node.name, wrap(".", node.field_name), wrap("(", node.argument_name, ":)"))
+        )
+
+    @staticmethod
+    def leave_directive_coordinate(node: PrintedNode, *_args: Any) -> str:
+        return f"@{node.name}"
+
+    @staticmethod
+    def leave_directive_argument_coordinate(node: PrintedNode, *_args: Any) -> str:
+        return f"@{node.name}{wrap('(', node.argument_name, ':)')}"
 
 
 def join(strings: Optional[Strings], separator: str = "") -> str:
